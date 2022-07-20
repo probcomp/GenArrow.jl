@@ -1,0 +1,7 @@
+name = "GenArrow"
+uuid = "38ed6c62-afb3-4a05-8af9-4104512be020"
+authors = ["McCoy Becker <mccoybecker@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
