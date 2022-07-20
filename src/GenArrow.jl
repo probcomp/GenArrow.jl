@@ -38,7 +38,7 @@ end
 import Arrow: write
 function Arrow.write(io, tr::Gen.Trace)
     walked = traverse(tr)
-    Arrow.write(io, walked)
+    Arrow.write(io, [walked])
 end
 
 end # module
