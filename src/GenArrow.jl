@@ -28,8 +28,9 @@ end
 function traverse(tr::Gen.Trace)
     ret = get_retval(tr)
     args = get_args(tr)
+    score = get_score(tr)
     addrs, vals = traverse(get_choices(tr))
-    return (; ret, args, addrs, map(enumerate(vals)) do (ind, v)
+    return (; score, ret, args, addrs, map(enumerate(vals)) do (ind, v)
         Symbol(ind) => v
     end...)
 end
