@@ -5,13 +5,14 @@ using Gen
 using GenArrow
 
 @gen function model()
-    x ~ normal(0.0, 1.0)
-    return x
+    for k in 1:1000
+        {:x => k} ~ normal(0.0, 1.0)
+    end
 end
 
 tr = simulate(model, ())
 Arrow.write("some_file.arrow", tr)
-tbl = Arrow.Table(Arrow.read("some_file.arrow"))
-@info tbl
+partial_tr = GenArrow.deserialize("some_file.arrow")
+@info partial_tr
 
 end # module
