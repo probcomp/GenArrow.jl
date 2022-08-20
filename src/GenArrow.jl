@@ -73,7 +73,6 @@ function traverse(tr::Gen.Trace; user_provided_metadata...)
 end
 
 function save(dir, tr::Gen.Trace; user_provided_metadata...)
-    mkpath(dir)
     metadata, addrs, choices = traverse(tr; user_provided_metadata...)
     metadata_path = joinpath(dir, "metadata.arrow")
     addrs_path = joinpath(dir, "addrs.arrow")
@@ -97,7 +96,7 @@ const manifest_name = "TraceManifest.toml"
 struct SerializationContext
     dir
     manifest::Dict
-    entry::Dict
+    session::Dict
     uuid::UUID
     timestamp::Float64
     datetime::String
@@ -106,45 +105,44 @@ end
 
 import Base: push!
 function Base.push!(ctx::SerializationContext, path)
-    datetime = ctx.datetime
-    entry = ctx.entry
-    push!(entry["paths"], path)
     push!(ctx.written_paths, path)
 end
 
 function activate(dir)
-    @info "(GenArrow) Activating context in $(dir)"
+    @info "(GenArrow) Activating serialization session context in $(dir)"
     now, dt_now = time(), Dates.now()
     datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
     u4 = uuid4()
     u5 = uuid5(u4, repr(now))
     try
         d = TOML.parsefile(joinpath(dir, manifest_name))
-        entry = Dict(
-            "timestamp" => datetime,
-            "paths" => String[])
-        d[repr(length(d) + 1)] = entry
-        return SerializationContext(dir, d, entry, u5, now, datetime, [])
+        session = Dict("timestamp" => datetime)
+        d["$(repr(length(d) + 1))"] = session
+        return SerializationContext(dir, d, session, u5, now, datetime, [])
     catch e
         d = Dict()
-        entry = Dict(
-            "timestamp" => datetime,
-            "paths" => String[])
-        d[repr(1)] = entry
-        return SerializationContext(dir, d, entry, u5, now, datetime, [])
+        session = Dict("timestamp" => datetime)
+        d["$(repr(1))"] = session
+        return SerializationContext(dir, d, session, u5, now, datetime, [])
     end
 end
 
 function write!(ctx::SerializationContext, tr::Gen.Trace;
     user_provided_metadata...)
     dir = joinpath(ctx.dir, "$(uuid4())")
+    mkpath(dir)
     save(dir, tr; user_provided_metadata...)
     push!(ctx, dir)
 end
 
 function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
-    entry = ctx.entry
-    entry["metadata"] = metadata
+    session = ctx.session
+    haskey(metadata, "paths") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `paths` key.")
+    haskey(metadata, "timestamp") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `timestamp` key.")
+    merge!(ctx.session, metadata)
+end
+
+function new_session!(ctx::SerializationContext)
 end
 
 function activate(fn, dir)
@@ -152,13 +150,23 @@ function activate(fn, dir)
     ctx = activate(dir)
     try
         fn(ctx)
+        paths_file = joinpath(dir, "$(length(ctx.manifest)).arrow")
+        ctx.session["paths"] = paths_file
         manifest_path = joinpath(dir, manifest_name)
+        open(paths_file, "w") do io
+            Arrow.write(io, (trace_directory = ctx.written_paths, ))
+        end
         open(manifest_path, "w") do io
             TOML.print(io, ctx.manifest; sorted=true)
         end
         return ctx
     catch e
         manifest_path = joinpath(dir, manifest_name)
+        paths_file = joinpath(dir, "$(length(ctx.manifest)).arrow")
+        ctx.session["paths"] = paths_file
+        open(paths_file, "w") do io
+            Arrow.write(io, (trace_directory = ctx.written_paths, ))
+        end
         open(manifest_path, "w") do io
             TOML.print(io, ctx.manifest; sorted=true)
         end
