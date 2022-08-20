@@ -62,18 +62,18 @@ function traverse(chm::Gen.ChoiceMap)
     return addrs, sparse
 end
 
-function traverse(tr::Gen.Trace; user_provided_metadata...)
+function traverse(tr::Gen.Trace)
     ret = get_retval(tr)
     args = get_args(tr)
     score = get_score(tr)
     gen_fn = repr(get_gen_fn(tr))
     addrs, choices = traverse(get_choices(tr))
-    metadata = (; gen_fn, score, ret, args, user_provided_metadata...)
+    metadata = (; gen_fn, score, ret, args)
     return metadata, addrs, choices
 end
 
-function save(dir, tr::Gen.Trace; user_provided_metadata...)
-    metadata, addrs, choices = traverse(tr; user_provided_metadata...)
+function save(dir, tr::Gen.Trace)
+    metadata, addrs, choices = traverse(tr)
     metadata_path = joinpath(dir, "metadata.arrow")
     addrs_path = joinpath(dir, "addrs.arrow")
     choices_path = joinpath(dir, "choices.arrow")
@@ -100,12 +100,12 @@ struct SerializationContext
     uuid::UUID
     timestamp::Float64
     datetime::String
-    written_paths::Vector
+    written::Vector
 end
 
 import Base: push!
 function Base.push!(ctx::SerializationContext, path)
-    push!(ctx.written_paths, path)
+    push!(ctx.written, path)
 end
 
 function activate(dir)
@@ -128,11 +128,11 @@ function activate(dir)
 end
 
 function write!(ctx::SerializationContext, tr::Gen.Trace;
-    user_provided_metadata...)
+        user_provided_metadata...)
     dir = joinpath(ctx.dir, "$(uuid4())")
     mkpath(dir)
-    save(dir, tr; user_provided_metadata...)
-    push!(ctx, dir)
+    save(dir, tr)
+    push!(ctx, (path = dir; user_provided_metadata...))
 end
 
 function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
@@ -154,7 +154,7 @@ function activate(fn, dir)
         ctx.session["paths"] = paths_file
         manifest_path = joinpath(dir, manifest_name)
         open(paths_file, "w") do io
-            Arrow.write(io, (trace_directory = ctx.written_paths, ))
+            Arrow.write(io, (trace_directory = ctx.written, ))
         end
         open(manifest_path, "w") do io
             TOML.print(io, ctx.manifest; sorted=true)
@@ -165,7 +165,7 @@ function activate(fn, dir)
         paths_file = joinpath(dir, "$(length(ctx.manifest)).arrow")
         ctx.session["paths"] = paths_file
         open(paths_file, "w") do io
-            Arrow.write(io, (trace_directory = ctx.written_paths, ))
+            Arrow.write(io, (trace_directory = ctx.written, ))
         end
         open(manifest_path, "w") do io
             TOML.print(io, ctx.manifest; sorted=true)
@@ -190,15 +190,15 @@ import Base: filter
 function filter(fn::Function, ctx::SerializationContext)
     manifest = collect(ctx.manifest)
     Iterators.flatten(map(manifest) do (k, v)
-        paths = v["paths"]
-        filter(paths) do p
-            addrs_path = joinpath(p, "addrs.arrow")
-            tbl = Arrow.Table(Arrow.read(addrs_path))
-            fn(map(tbl.addr) do v
-                foldr(Pair, map(str_to_symbol, v))
-            end)
-        end
-    end)
+                          paths = v["paths"]
+                          filter(paths) do p
+                              addrs_path = joinpath(p, "addrs.arrow")
+                              tbl = Arrow.Table(Arrow.read(addrs_path))
+                              fn(map(tbl.addr) do v
+                                     foldr(Pair, map(str_to_symbol, v))
+                                 end)
+                          end
+                      end)
 end
 
 end # module
