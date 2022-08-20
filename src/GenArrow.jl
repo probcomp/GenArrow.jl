@@ -68,7 +68,7 @@ end
 
 function traverse(tr::Gen.Trace)
     ret = get_retval(tr)
-    args = get_args(tr)
+    args = get_serializable_args(tr)
     score = get_score(tr)
     gen_fn = repr(get_gen_fn(tr))
     addrs, choices = traverse(get_choices(tr))
