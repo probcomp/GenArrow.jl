@@ -141,6 +141,11 @@ function write!(ctx::SerializationContext, tr::Gen.Trace;
     push!(ctx, dir)
 end
 
+function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
+    entry = ctx.entry
+    entry["metadata"] = metadata
+end
+
 function activate(fn, dir)
     ctx = activate(dir)
     fn(ctx)
