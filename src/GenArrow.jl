@@ -11,11 +11,15 @@ using ArrowTypes
 ##### exports
 #####
 
-export activate, write!
+export activate, write!, get_serializable_args
 
 #####
 ##### Serialization
 #####
+
+function get_serializable_args(tr::T) where T <: Gen.Trace
+    return Gen.get_args(tr)
+end
 
 # This is a zero-cost immutable pointer to data
 # of type `T`.
@@ -77,7 +81,7 @@ function save(dir, tr::Gen.Trace)
     metadata_path = joinpath(dir, "metadata.arrow")
     addrs_path = joinpath(dir, "addrs.arrow")
     choices_path = joinpath(dir, "choices.arrow")
-    Arrow.write(metadata_path, [metadata])
+    Arrow.write(metadata_path, [metadata]; maxdepth=10)
     Arrow.write(addrs_path, map(addrs) do addr
         (; addr=collect(addr))
     end)
@@ -132,7 +136,7 @@ function write!(ctx::SerializationContext, tr::Gen.Trace;
     dir = joinpath(ctx.dir, "$(uuid4())")
     mkpath(dir)
     save(dir, tr)
-    push!(ctx, (path = dir; user_provided_metadata...))
+    push!(ctx, (; path = dir, user_provided_metadata...))
 end
 
 function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
