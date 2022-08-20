@@ -113,6 +113,7 @@ function Base.push!(ctx::SerializationContext, path)
 end
 
 function activate(dir)
+    @info "(GenArrow) Activating context in $(dir)"
     now, dt_now = time(), Dates.now()
     datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
     u4 = uuid4()
@@ -147,13 +148,22 @@ function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
 end
 
 function activate(fn, dir)
+    mkpath(dir)
     ctx = activate(dir)
-    fn(ctx)
-    manifest_path = joinpath(dir, manifest_name)
-    open(manifest_path, "w") do io
-        TOML.print(io, ctx.manifest; sorted=true)
+    try
+        fn(ctx)
+        manifest_path = joinpath(dir, manifest_name)
+        open(manifest_path, "w") do io
+            TOML.print(io, ctx.manifest; sorted=true)
+        end
+        return ctx
+    catch e
+        manifest_path = joinpath(dir, manifest_name)
+        open(manifest_path, "w") do io
+            TOML.print(io, ctx.manifest; sorted=true)
+        end
+        rethrow(e)
     end
-    return ctx
 end
 
 #####
