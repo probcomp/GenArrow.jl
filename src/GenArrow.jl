@@ -116,12 +116,12 @@ function activate(dir)
     u5 = uuid5(u4, repr(now))
     try
         d = TOML.parsefile(joinpath(dir, manifest_name))
-        session = Dict("timestamp" => datetime)
+        session = Dict{String, Any}("timestamp" => datetime)
         d["$(repr(length(d) + 1))"] = session
         return SerializationContext(dir, d, session, u5, now, datetime, [])
     catch e
         d = Dict()
-        session = Dict("timestamp" => datetime)
+        session = Dict{String, Any}("timestamp" => datetime)
         d["$(repr(1))"] = session
         return SerializationContext(dir, d, session, u5, now, datetime, [])
     end
