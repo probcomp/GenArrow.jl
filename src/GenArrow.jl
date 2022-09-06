@@ -11,14 +11,13 @@ using ArrowTypes
 ##### exports
 #####
 
-export activate, write!
+export activate, write!, address_filter
 
 #####
 ##### Serialization
 #####
 
-# This is a zero-cost immutable pointer to data
-# of type `T`.
+# This is a zero-cost immutable reference to data of type `T`.
 struct ZeroCost{T}
     data::T
 end
@@ -93,6 +92,7 @@ end
 const manifest_name = "TraceManifest.toml"
 
 # TODO: possible to make this threadsafe?
+# TODO: allow writes to push to a channel.
 
 struct SerializationContext
     dir
@@ -163,8 +163,7 @@ function str_to_symbol(s)
     return s
 end
 
-import Base: filter
-function filter(fn::Function, ctx::SerializationContext)
+function address_filter(fn::Function, ctx::SerializationContext)
     manifest = collect(ctx.manifest)
     Iterators.flatten(map(manifest) do (k, v)
         paths = v["paths"]
