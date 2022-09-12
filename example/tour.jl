@@ -5,6 +5,7 @@ module GenArrowTour
 using Arrow
 using Gen
 using GenArrow
+using FilePathsBase
 using LinearAlgebra
 
 # Here, we define a model and a submodel.
@@ -26,15 +27,15 @@ end
 # `activate`. `activate` returns a `ctx::SerializationContext` - 
 # a management structure which provides interfaces to read/write serialized
 # output.
-activate("./sample") do ctx
+activate(Path("./sample")) do ctx
 
     # Here, we sample a `tr::Gen.Trace` for our model.
     # Then, we save it to the serialization directory
     # with `GenArrow.write!`
     tr = simulate(model, ())
     GenArrow.write!(ctx, tr)
-
     # `GenArrow` keeps track of each trace using a UUID.
+
     # Multiple `write!` statements are perfectly acceptable.
     tr = simulate(model, ())
 end

@@ -6,12 +6,14 @@ using TOML
 using Dates
 using Arrow
 using ArrowTypes
+using FilePathsBase
+using Distributed
 
 #####
 ##### exports
 #####
 
-export activate, write!, address_filter, get_serializable_args
+export activate, write!, address_filter, get_serializable_args, get_remote_channel
 
 #####
 ##### Serialization
@@ -76,11 +78,11 @@ function traverse(tr::Gen.Trace)
     return metadata, addrs, choices
 end
 
-function save(dir, tr::Gen.Trace)
+function save(dir::AbstractPath, tr::Gen.Trace)
     metadata, addrs, choices = traverse(tr)
-    metadata_path = joinpath(dir, "metadata.arrow")
-    addrs_path = joinpath(dir, "addrs.arrow")
-    choices_path = joinpath(dir, "choices.arrow")
+    metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+    addrs_path = FilePathsBase.join(dir, "addrs.arrow")
+    choices_path = FilePathsBase.join(dir, "choices.arrow")
     Arrow.write(metadata_path, [metadata]; maxdepth=10)
     Arrow.write(addrs_path, map(addrs) do addr
         (; addr=collect(addr))
@@ -93,51 +95,81 @@ end
 ##### Serialization target directory management
 #####
 
-const manifest_name = "TraceManifest.toml"
+const MANIFEST_NAME = "TraceManifest.toml"
 
 # TODO: possible to make this threadsafe?
 # TODO: allow writes to push to a channel.
 
-struct SerializationContext
-    dir
+mutable struct SerializationContext
+    dir::AbstractPath
     manifest::Dict
     session::Dict
     uuid::UUID
     timestamp::Float64
     datetime::String
-    written::Vector
+    write::Vector
+    write_channel::RemoteChannel
 end
 
 import Base: push!
-function Base.push!(ctx::SerializationContext, path)
-    push!(ctx.written, path)
+function Base.push!(ctx::SerializationContext, metadata::NamedTuple)
+    push!(ctx.write, metadata)
 end
 
-function activate(dir)
+function get_remote_channel(ctx::SerializationContext)
+    return ctx.write_channel
+end
+
+function activate(dir::AbstractPath)
     @info "(GenArrow) Activating serialization session context in $(dir)"
     now, dt_now = time(), Dates.now()
     datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
     u4 = uuid4()
     u5 = uuid5(u4, repr(now))
-    try
-        d = TOML.parsefile(joinpath(dir, manifest_name))
+    manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
+    
+    # If a manifest already exists, use it.
+    if FilePathsBase.exists(manifest_path)
+
+        # After parsing, soft verify that it's the correct format.
+        # TODO: make this compatible with S3Path.
+        manifest_path = string(manifest_path)
+        d = TOML.parsefile(manifest_path)
         session = Dict{String, Any}("timestamp" => datetime)
         d["$(repr(length(d) + 1))"] = session
-        return SerializationContext(dir, d, session, u5, now, datetime, [])
-    catch e
+
+    # If it doesn't exist, make it.
+    else
         d = Dict()
         session = Dict{String, Any}("timestamp" => datetime)
         d["$(repr(1))"] = session
-        return SerializationContext(dir, d, session, u5, now, datetime, [])
     end
+
+    return SerializationContext(dir, d, session, u5, now, datetime, Any[], RemoteChannel(() -> Channel(Inf)))
 end
 
 function write!(ctx::SerializationContext, tr::Gen.Trace;
         user_provided_metadata...)
-    dir = joinpath(ctx.dir, "$(uuid4())")
+    dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
     mkpath(dir)
     save(dir, tr)
-    push!(ctx, (; path = dir, user_provided_metadata...))
+    string_dir = string(dir)
+    
+    # Here, we push metadata from successful (we have to replace this
+    # with the channel functionality)
+    push!(ctx, (; path = string_dir, user_provided_metadata...))
+end
+
+function write!(dir::AbstractPath, ctx_remote_channel::RemoteChannel, tr::Gen.Trace;
+        user_provided_metadata...)
+    dir = FilePathsBase.join(dir, "$(uuid4())")
+    mkpath(dir)
+    save(dir, tr)
+    string_dir = string(dir)
+    
+    # Here, we push metadata from successful (we have to replace this
+    # with the channel functionality)
+    Base.put!(ctx_remote_channel, (; path = string_dir, user_provided_metadata...))
 end
 
 function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
@@ -147,36 +179,42 @@ function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
     merge!(ctx.session, metadata)
 end
 
-function new_session!(ctx::SerializationContext)
-end
-
-function activate(fn, dir)
+function activate(fn::Function, dir::AbstractPath)
     mkpath(dir)
     ctx = activate(dir)
-    try
+    manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
+
+    # Try to run the function.
+    caught = try
         fn(ctx)
-        paths_file = joinpath(dir, "$(length(ctx.manifest)).arrow")
-        ctx.session["paths"] = paths_file
-        manifest_path = joinpath(dir, manifest_name)
-        open(paths_file, "w") do io
-            Arrow.write(io, (trace_directory = ctx.written, ))
-        end
-        open(manifest_path, "w") do io
-            TOML.print(io, ctx.manifest; sorted=true)
-        end
-        return ctx
+        nothing
     catch e
-        manifest_path = joinpath(dir, manifest_name)
-        paths_file = joinpath(dir, "$(length(ctx.manifest)).arrow")
-        ctx.session["paths"] = paths_file
-        open(paths_file, "w") do io
-            Arrow.write(io, (trace_directory = ctx.written, ))
-        end
-        open(manifest_path, "w") do io
-            TOML.print(io, ctx.manifest; sorted=true)
-        end
-        rethrow(e)
+        e
     end
+
+    # Serialize any active data written before the exception was thrown.
+    paths_file = FilePathsBase.join(dir, "$(length(ctx.manifest)).arrow")
+    ctx.session["paths"] = string(paths_file)
+    channel_collection = []
+    while isready(ctx.write_channel)
+        push!(channel_collection, take!(ctx.write_channel))
+    end
+    flat = collect(Iterators.flatten((ctx.write, channel_collection)))
+   
+    # Write to session_index.arrow file.
+    open(paths_file, "w") do io
+        Arrow.write(io, (trace_directory = flat, ))
+    end
+   
+    # Write out to the TraceManifest.toml manifest.
+    open(manifest_path, "w") do io
+        TOML.print(io, ctx.manifest; sorted=true)
+    end
+
+    # If caught is not nothing (e.g. an exception), rethrow.
+    caught != nothing && rethrow(caught)
+
+    return ctx
 end
 
 #####
@@ -196,7 +234,7 @@ function address_filter(fn::Function, ctx::SerializationContext)
     Iterators.flatten(map(manifest) do (k, v)
                           paths = v["paths"]
                           filter(paths) do p
-                              addrs_path = joinpath(p, "addrs.arrow")
+                              addrs_path = FilePathsBase.join(p, "addrs.arrow")
                               tbl = Arrow.Table(Arrow.read(addrs_path))
                               fn(map(tbl.addr) do v
                                      foldr(Pair, map(str_to_symbol, v))
