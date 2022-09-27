@@ -25,6 +25,7 @@ end
 
 # To create a `GenArrow.jl` managed directory, we pass a path into
 # `activate`. `activate` returns a `ctx::SerializationContext` - 
+# \
 # a management structure which provides interfaces to read/write serialized
 # output.
 activate(Path("./sample")) do ctx

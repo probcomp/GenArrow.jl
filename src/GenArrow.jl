@@ -49,7 +49,7 @@ function second(x)
 end
 
 function traverse(chm::Gen.ChoiceMap)
-    typeset = Set(Type[])
+    typeset = Set(Type[]) # Collect all the types seen?
     flat = Tuple{Any,ZeroCost}[]
     for (k, v) in get_values_shallow(chm)
         push!(typeset, typeof(v))
@@ -58,6 +58,7 @@ function traverse(chm::Gen.ChoiceMap)
     for (par, sub) in get_submaps_shallow(chm)
         traverse!(flat, typeset, (par,), sub)
     end
+    println(typeof(flat))
     ts = collect(typeset)
     addrs = map(first, flat)
     vs = map(second, flat)
