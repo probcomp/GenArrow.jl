@@ -1,5 +1,4 @@
 module GenArrow
-
 using Gen
 using UUIDs
 using TOML
@@ -58,7 +57,6 @@ function traverse(chm::Gen.ChoiceMap)
     for (par, sub) in get_submaps_shallow(chm)
         traverse!(flat, typeset, (par,), sub)
     end
-    println(typeof(flat))
     ts = collect(typeset)
     addrs = map(first, flat)
     vs = map(second, flat)
@@ -244,4 +242,3 @@ function address_filter(fn::Function, ctx::SerializationContext)
                       end)
 end
 
-end # module
