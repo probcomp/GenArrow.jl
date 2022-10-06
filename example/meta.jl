@@ -33,12 +33,14 @@ activate(Path("./sample")) do ctx
   # Then, we save it to the serialization directory
   # with `GenArrow.write!`
   tr = simulate(model, ())
-  GenArrow.write!(ctx, tr; x=333, y=111, z=123)
+  trace_path = GenArrow.write!(ctx, tr; x=333, y=111, z=123)
+  print("path ", trace_path)
   # `GenArrow` keeps track of each trace using a UUID.
 
   # Multiple `write!` statements are perfectly acceptable.
   tr = simulate(model, ())
 end
+
 
 # Now, once we have a serialization directory, we may want to query it later,
 # to perform analysis on the traces we sampled from our models or inference

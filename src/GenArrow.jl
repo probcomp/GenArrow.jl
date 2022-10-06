@@ -7,6 +7,7 @@ using Arrow
 using ArrowTypes
 using FilePathsBase
 using Distributed
+using Tables
 
 #####
 ##### exports
@@ -25,18 +26,18 @@ function get_serializable_args(tr::T) where {T<:Gen.Trace}
 end
 
 
-struct ZeroCost{T}
-  data::T
-end
+# struct ZeroCost{T}
+#   data::T
+# end
 
-function unbox(zc::ZeroCost{T}) where {T}
-  return zc.data
-end
+# function unbox(zc::ZeroCost{T}) where {T}
+#   return zc.data
+# end
 
 function traverse!(flat::Vector, typeset::Set, par::Tuple, chm::Gen.ChoiceMap)
   for (k, v) in get_values_shallow(chm)
     push!(typeset, typeof(v))
-    push!(flat, ((par..., k), ZeroCost(v)))
+    push!(flat, ((par..., k), v)) # ZeroCost
   end
 
   for (p, sub) in get_submaps_shallow(chm)
@@ -50,10 +51,10 @@ end
 
 function traverse(chm::Gen.ChoiceMap)
   typeset = Set(Type[]) # Collect all the types seen?
-  flat = Tuple{Any,ZeroCost}[]
+  flat = Tuple{Any,Any}[]
   for (k, v) in get_values_shallow(chm)
     push!(typeset, typeof(v))
-    push!(flat, ((k,), ZeroCost(v)))
+    push!(flat, ((k,), v)) # ZeroCost
   end
   for (par, sub) in get_submaps_shallow(chm)
     traverse!(flat, typeset, (par,), sub)
@@ -62,7 +63,7 @@ function traverse(chm::Gen.ChoiceMap)
   addrs = map(first, flat)
   vs = map(second, flat)
   sparse = map(vs) do v
-    v = unbox(v)
+    # v = unbox(v)
     (; (typeof(v) <: t ? Symbol(t) => v : Symbol(t) => missing for t in ts)...)
   end
   return addrs, sparse
@@ -159,6 +160,7 @@ function write!(ctx::SerializationContext, tr::Gen.Trace; user_provided_metadata
   # Here, we push metadata from successful (we have to replace this
   # with the channel functionality)
   push!(ctx, (; path=string_dir, user_provided_metadata...))
+  return dir
 end
 
 function write!(dir::AbstractPath, ctx_remote_channel::RemoteChannel, tr::Gen.Trace;
@@ -171,8 +173,10 @@ function write!(dir::AbstractPath, ctx_remote_channel::RemoteChannel, tr::Gen.Tr
   # Here, we push metadata from successful (we have to replace this
   # with the channel functionality)
   Base.put!(ctx_remote_channel, (; path=string_dir, user_provided_metadata...))
+  return dir # careful here in case remote stalls?
 end
 
+# What is this?
 function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
   ctx.session
   haskey(metadata, "paths") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `paths` key.")
@@ -222,26 +226,30 @@ end
 ##### Query interface
 #####
 
-function str_to_symbol(s::String)
-  return Symbol(s)
-end
+# function str_to_symbol(s::String)
+#   return Symbol(s)
+# end
 
-function str_to_symbol(s)
-  return s
-end
+# function str_to_symbol(s)
+#   return s
+# end
 
-function address_filter(fn::Function, ctx::SerializationContext)
-  manifest = collect(ctx.manifest)
-  Iterators.flatten(map(manifest) do (k, v)
-    paths = v["paths"]
-    filter(paths) do p
-      addrs_path = FilePathsBase.join(p, "addrs.arrow")
-      tbl = Arrow.Table(Arrow.read(addrs_path))
-      fn(map(tbl.addr) do v
-        foldr(Pair, map(str_to_symbol, v))
-      end)
-    end
-  end)
-end
+# function address_filter(fn::Function, ctx::SerializationContext)
+#   manifest = collect(ctx.manifest)
+#   Iterators.flatten(map(manifest) do (k, v)
+#     paths = v["paths"]
+#     filter(paths) do p
+#       addrs_path = FilePathsBase.join(p, "addrs.arrow")
+#       tbl = Arrow.Table(Arrow.read(addrs_path))
+#       fn(map(tbl.addr) do v
+#         foldr(Pair, map(str_to_symbol, v))
+#       end)
+#     end
+#   end)
+# end
+
+# Query:
+# Tables.rows(arrow_table) |> filter(_.x>50)
 
 end # module
+
