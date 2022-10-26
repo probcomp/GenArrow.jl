@@ -1,5 +1,4 @@
 module GenArrowPose
-
 include("uniformPose.jl")
 using Gen
 using GenArrow
@@ -10,6 +9,7 @@ using ArrowTypes
 using GenDirectionalStats
 import StaticArrays: StaticVector, SVector, @SVector
 
+# Use structs as a distribution in demo.
 ArrowTypes.JuliaType(::Val{:Pose}) = Pose
 ArrowTypes.arrowname(::Type{Pose}) = :Pose
 ArrowTypes.JuliaType(::Val{:Rotation}) = Rotation
@@ -35,7 +35,7 @@ end
 tr = simulate(model, ())
 display(get_choices(tr))
 
-activate(Path("./sample")) do ctx
+GenArrow.activate(Path("./sample")) do ctx
   # Here, we sample a `tr::Gen.Trace` for our model.
   # Then, we save it to the serialization directory
   # with `GenArrow.write!`

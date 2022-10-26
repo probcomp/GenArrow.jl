@@ -6,9 +6,7 @@ using Arrow
 using Gen
 using GenArrow
 using FilePathsBase
-using LinearAlgebra
 
-# Here, we define a model and a submodel.
 
 @gen function submodel()
   for k in 1:100
@@ -23,11 +21,6 @@ end
   q ~ submodel()
 end
 
-# To create a `GenArrow.jl` managed directory, we pass a path into
-# `activate`. `activate` returns a `ctx::SerializationContext` - 
-# \
-# a management structure which provides interfaces to read/write serialized
-# output.
 activate(Path("./sample")) do ctx
   # Here, we sample a `tr::Gen.Trace` for our model.
   # Then, we save it to the serialization directory
@@ -39,7 +32,6 @@ activate(Path("./sample")) do ctx
 
   # Multiple `write!` statements are perfectly acceptable.
   tr = simulate(model, ())
-  trace_path = GenArrow.write!(ctx, tr)
 end
 
 

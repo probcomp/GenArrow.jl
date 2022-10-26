@@ -11,7 +11,7 @@ using Tables
 
 #####
 ##### exports
-#####
+###
 
 export activate, write!, address_filter, get_serializable_args, get_remote_channel
 
@@ -138,7 +138,7 @@ function activate(dir::AbstractPath)
     # TODO: make this compatible with S3Path.
     manifest_path = string(manifest_path)
     d = TOML.parsefile(manifest_path)
-    session = Dict{String,Any}("timestamp" => datetime)
+    session = Dict{String,Any}("timestamp" => datetime) # Consider separating by run of project?
     d["$(repr(length(d) + 1))"] = session
 
     # If it doesn't exist, make it.
@@ -222,34 +222,23 @@ function activate(fn::Function, dir::AbstractPath)
   return ctx
 end
 
-#####
-##### Query interface
-#####
+function query_metadata(dir::AbstractPath)
 
-# function str_to_symbol(s::String)
-#   return Symbol(s)
-# end
+end
+## Data queries
+function query_context(dir::AbstractPath)
+  # dir is a path to the directory. not to a specific serialization.
+end
 
-# function str_to_symbol(s)
-#   return s
-# end
+function query_full(dir::AbstractPath)
+  # How to query all contexts at once?
+end
 
-# function address_filter(fn::Function, ctx::SerializationContext)
-#   manifest = collect(ctx.manifest)
-#   Iterators.flatten(map(manifest) do (k, v)
-#     paths = v["paths"]
-#     filter(paths) do p
-#       addrs_path = FilePathsBase.join(p, "addrs.arrow")
-#       tbl = Arrow.Table(Arrow.read(addrs_path))
-#       fn(map(tbl.addr) do v
-#         foldr(Pair, map(str_to_symbol, v))
-#       end)
-#     end
-#   end)
-# end
+function query_serialization(dir::AbstractPath)
+  # For a specific serialization
+end
 
-# Query:
-# Tables.rows(arrow_table) |> filter(_.x>50)
+# No need to use DataFrame. Can do it directly from Table.
 
 end # module
 
