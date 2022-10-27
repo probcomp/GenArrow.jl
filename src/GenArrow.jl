@@ -1,5 +1,5 @@
 module GenArrow
-using Gen
+import Gen
 using UUIDs
 using TOML
 using Dates
@@ -35,12 +35,12 @@ end
 # end
 
 function traverse!(flat::Vector, typeset::Set, par::Tuple, chm::Gen.ChoiceMap)
-  for (k, v) in get_values_shallow(chm)
+  for (k, v) in Gen.get_values_shallow(chm)
     push!(typeset, typeof(v))
     push!(flat, ((par..., k), v)) # ZeroCost
   end
 
-  for (p, sub) in get_submaps_shallow(chm)
+  for (p, sub) in Gen.get_submaps_shallow(chm)
     traverse!(flat, typeset, (par..., p), sub)
   end
 end
@@ -52,11 +52,11 @@ end
 function traverse(chm::Gen.ChoiceMap)
   typeset = Set(Type[]) # Collect all the types seen?
   flat = Tuple{Any,Any}[]
-  for (k, v) in get_values_shallow(chm)
+  for (k, v) in Gen.get_values_shallow(chm)
     push!(typeset, typeof(v))
     push!(flat, ((k,), v)) # ZeroCost
   end
-  for (par, sub) in get_submaps_shallow(chm)
+  for (par, sub) in Gen.get_submaps_shallow(chm)
     traverse!(flat, typeset, (par,), sub)
   end
   ts = collect(typeset)
@@ -70,11 +70,11 @@ function traverse(chm::Gen.ChoiceMap)
 end
 
 function traverse(tr::Gen.Trace)
-  ret = get_retval(tr)
+  ret = Gen.get_retval(tr)
   args = get_serializable_args(tr)
-  score = get_score(tr)
-  gen_fn = repr(get_gen_fn(tr))
-  addrs, choices = traverse(get_choices(tr))
+  score = Gen.get_score(tr)
+  gen_fn = repr(Gen.get_gen_fn(tr))
+  addrs, choices = traverse(Gen.get_choices(tr))
   metadata = (; gen_fn, score, ret, args)
   return metadata, addrs, choices
 end
