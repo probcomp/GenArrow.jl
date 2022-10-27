@@ -124,6 +124,7 @@ function get_remote_channel(ctx::SerializationContext)
 end
 
 function activate(dir::AbstractPath)
+  print("Hi there")
   @info "(GenArrow) Activating serialization session context in $(dir)"
   now, dt_now = time(), Dates.now()
   datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
