@@ -217,7 +217,7 @@ function activate(fn::Function, dir::AbstractPath)
   end
 
   # If caught is not nothing (e.g. an exception), rethrow.
-  # caught != nothing && rethrow(caught)
+  caught != nothing && throw(caught)
 
   return ctx
 end
