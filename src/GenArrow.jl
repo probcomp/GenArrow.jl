@@ -1,4 +1,6 @@
 module GenArrow
+using Serialization
+using DataFrames
 using Gen
 using UUIDs
 using TOML
@@ -24,15 +26,6 @@ export activate, write!, address_filter, get_serializable_args, get_remote_chann
 function get_serializable_args(tr::T) where {T<:Gen.Trace}
   return Gen.get_args(tr)
 end
-
-
-# struct ZeroCost{T}
-#   data::T
-# end
-
-# function unbox(zc::ZeroCost{T}) where {T}
-#   return zc.data
-# end
 
 function traverse!(flat::Vector, typeset::Set, par::Tuple, chm::Gen.ChoiceMap)
   for (k, v) in get_values_shallow(chm)
@@ -63,7 +56,6 @@ function traverse(chm::Gen.ChoiceMap)
   addrs = map(first, flat)
   vs = map(second, flat)
   sparse = map(vs) do v
-    # v = unbox(v)
     (; (typeof(v) <: t ? Symbol(t) => v : Symbol(t) => missing for t in ts)...)
   end
   return addrs, sparse
@@ -84,12 +76,19 @@ function save(dir::AbstractPath, tr::Gen.Trace; user_provided_metadata)
   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
   addrs_path = FilePathsBase.join(dir, "addrs.arrow")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
+  metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
   x = (; user_provided_metadata...)
   tbl = merge(metadata, x)
-  Arrow.write(metadata_path, [tbl])
-  Arrow.write(addrs_path, map(addrs) do addr
-    (; addr=collect(addr))
-  end)
+  Arrow.write(metadata_path, [tbl]) 
+  serialize(string(addrs_path), addrs)
+  # Arrow.write(addrs_path, map(addrs) do addr
+  #   (; addr=collect(addr))
+  # end)
+
+  fields = fieldnames(typeof(choices[1]))
+  fields = fields[[1,2,3,5,6]]
+  println(fields)
+  choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
   Arrow.write(choices_path, choices)
   return dir
 end
@@ -124,7 +123,6 @@ function get_remote_channel(ctx::SerializationContext)
 end
 
 function activate(dir::AbstractPath)
-  print("Hi there")
   @info "(GenArrow) Activating serialization session context in $(dir)"
   now, dt_now = time(), Dates.now()
   datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
@@ -191,12 +189,12 @@ function activate(fn::Function, dir::AbstractPath)
   manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
 
   # Try to run the function.
-  caught = try
-    fn(ctx)
-    nothing
-  catch e
-    e
-  end
+  # caught = try
+  fn(ctx)
+    # nothing
+  # catch e
+    # throw e
+  # end
 
   # Serialize any active data written before the exception was thrown.
   paths_file = FilePathsBase.join(dir, "$(length(ctx.manifest)).arrow")
@@ -218,9 +216,32 @@ function activate(fn::Function, dir::AbstractPath)
   end
 
   # If caught is not nothing (e.g. an exception), rethrow.
-  caught != nothing && throw(caught)
+  # caught != nothing && throw(caught)
 
   return ctx
+end
+
+function reconstruct_trace(gen_fn, dir)
+  function lst_to_pairs(addr)
+    reduce((addr,y) -> Pair(y,addr), reverse(addr))
+  end
+  choice_tbl = Arrow.Table("$(dir)/choices.arrow")
+  addrs = deserialize("$(dir)/addrs.arrow")
+  metadata = Arrow.Table("$(dir)/metadata.arrow")
+  mappings = []
+  for all_choices_of_certain_type in choice_tbl
+    for (i,val) in enumerate(all_choices_of_certain_type)
+      if !isequal(missing, val)
+        push!(mappings, (lst_to_pairs(addrs[i]), val))
+      end
+    end
+  end
+  # for i in mappings
+  #   println(i)
+  # end
+  chm = Gen.choicemap(mappings...)
+  # println(gen_fn)
+  # Gen.generate(gen_fn, metadata.args[1], trace)
 end
 
 function query_metadata(dir::AbstractPath)

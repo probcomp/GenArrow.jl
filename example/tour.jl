@@ -33,7 +33,7 @@ activate(Path("./sample")) do ctx
     # Then, we save it to the serialization directory
     # with `GenArrow.write!`
     tr = simulate(model, ())
-    GenArrow.write!(tx, tr)
+    GenArrow.write!(ctx, tr)
     # `GenArrow` keeps track of each trace using a UUID.
 
     # Multiple `write!` statements are perfectly acceptable.
