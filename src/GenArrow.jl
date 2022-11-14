@@ -1,5 +1,7 @@
 module GenArrow
 using Serialization
+using BSON
+using JSON
 using DataFrames
 using Gen
 using UUIDs
@@ -10,6 +12,8 @@ using ArrowTypes
 using FilePathsBase
 using Distributed
 using Tables
+include("./traverse.jl")
+using .AddressTreeStruct
 
 #####
 ##### exports
@@ -27,14 +31,15 @@ function get_serializable_args(tr::T) where {T<:Gen.Trace}
   return Gen.get_args(tr)
 end
 
-function traverse!(flat::Vector, typeset::Set, par::Tuple, chm::Gen.ChoiceMap)
+function traverse!(chm::Gen.ChoiceMap, prefix::Tuple, addrs::AddressTree, flat::Vector, typeset::Set)
   for (k, v) in get_values_shallow(chm)
     push!(typeset, typeof(v))
-    push!(flat, ((par..., k), v)) # ZeroCost
+    addrs[(prefix..., k)] = v
+    push!(flat, v)
   end
 
-  for (p, sub) in get_submaps_shallow(chm)
-    traverse!(flat, typeset, (par..., p), sub)
+  for (k, subchm) in get_submaps_shallow(chm)
+    traverse!(subchm, (prefix..., k),addrs,  flat, typeset)
   end
 end
 
@@ -42,53 +47,43 @@ function second(x)
   return x[2]
 end
 
-function traverse(chm::Gen.ChoiceMap)
-  typeset = Set(Type[]) # Collect all the types seen?
-  flat = Tuple{Any,Any}[]
-  for (k, v) in get_values_shallow(chm)
-    push!(typeset, typeof(v))
-    push!(flat, ((k,), v)) # ZeroCost
-  end
-  for (par, sub) in get_submaps_shallow(chm)
-    traverse!(flat, typeset, (par,), sub)
-  end
-  ts = collect(typeset)
-  addrs = map(first, flat)
-  vs = map(second, flat)
-  sparse = map(vs) do v
-    (; (typeof(v) <: t ? Symbol(t) => v : Symbol(t) => missing for t in ts)...)
-  end
-  return addrs, sparse
-end
-
 function traverse(tr::Gen.Trace)
   ret = get_retval(tr)
   args = get_serializable_args(tr)
   score = get_score(tr)
   gen_fn = repr(get_gen_fn(tr))
-  addrs, choices = traverse(get_choices(tr))
+
+  typeset = Set(Type[]) # Collect all the types seen?
+  flattened_choices = []
+  addrs = InnerNode()
+  traverse!(get_choices(tr), tuple(), addrs, flattened_choices, typeset)
+  ts = collect(typeset)
+  sparse = map(flattened_choices) do v
+    (; (typeof(v) <: t ? Symbol(t) => v : Symbol(t) => missing for t in ts)...)
+  end
   metadata = (; gen_fn, score, ret, args)
-  return metadata, addrs, choices
+  return metadata, addrs, sparse
 end
 
 function save(dir::AbstractPath, tr::Gen.Trace; user_provided_metadata)
   metadata, addrs, choices = traverse(tr)
   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
-  addrs_path = FilePathsBase.join(dir, "addrs.arrow")
+  addrs_path = FilePathsBase.join(dir, "addrs.bson")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
   metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
   x = (; user_provided_metadata...)
   tbl = merge(metadata, x)
   Arrow.write(metadata_path, [tbl]) 
-  serialize(string(addrs_path), addrs)
-  # Arrow.write(addrs_path, map(addrs) do addr
-  #   (; addr=collect(addr))
-  # end)
+  serialize(string(addrs_path)*"w", addrs)
+  # bson(string(addrs_path), Dict(:bson=>addrs))
+  # open(string(addrs_path)*"j", "w") do f
+  #   JSON.print(f, addrs,0)
+  # end
 
-  fields = fieldnames(typeof(choices[1]))
-  fields = fields[[1,2,3,5,6]]
-  println(fields)
-  choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
+  # fields = fieldnames(typeof(choices[1]))
+  # fields = fields[[1,2,3,5,6]]
+  # println(fields)
+  # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
   Arrow.write(choices_path, choices)
   return dir
 end
@@ -236,9 +231,6 @@ function reconstruct_trace(gen_fn, dir)
       end
     end
   end
-  # for i in mappings
-  #   println(i)
-  # end
   chm = Gen.choicemap(mappings...)
   # println(gen_fn)
   # Gen.generate(gen_fn, metadata.args[1], trace)
@@ -260,7 +252,5 @@ function query_serialization(dir::AbstractPath)
   # For a specific serialization
 end
 
-# No need to use DataFrame. Can do it directly from Table.
 
 end # module
-

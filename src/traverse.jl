@@ -1,18 +1,5 @@
-using Gen
-
-function traverse(chm::Gen.ChoiceMap, prefix, tree)
-  for (k, val) in Gen.get_values_shallow(chm)
-    println((prefix..., k), " ",  val) # Figure out how to append more efficiently?
-    # Append to tree (prefix..., k) => val
-  end
-  for (k, submap) in Gen.get_submaps_shallow(chm)
-    traverse(submap, (prefix..., k), tree)
-  end
-end
-
-function traverse(t::Gen.Trace)
-  traverse(Gen.get_choices(t))
-end
+module AddressTreeStruct
+export AddressTree, InnerNode, TerminalNode
 
 abstract type AddressTree end
 mutable struct InnerNode <: AddressTree
@@ -72,4 +59,5 @@ function subtrie(node::AddressTree, prefix) # Naive subtrie?
         end
     end
     return node
+end
 end
