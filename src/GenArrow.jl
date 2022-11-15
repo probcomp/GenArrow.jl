@@ -145,6 +145,14 @@ function activate(dir::AbstractPath)
   return SerializationContext(dir, d, session, u5, now, datetime, Any[], RemoteChannel(() -> Channel(Inf)))
 end
 
+function write!(ctx::SerializationContext, traces::Vector{Gen.Trace}; user_provided_metadata...)
+  dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
+  mkpath(dir)
+  save(dir, traces; user_provided_metadata)
+  string_dir = string(dir)
+  push!(ctx, (; path=string_dir, user_provided_metadata...))
+  return dir
+end
 function write!(ctx::SerializationContext, tr::Gen.Trace; user_provided_metadata...)
   dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
   mkpath(dir)
@@ -183,7 +191,6 @@ function activate(fn::Function, dir::AbstractPath)
   ctx = activate(dir)
   manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
 
-  # Try to run the function.
   # caught = try
   fn(ctx)
     # nothing
@@ -200,15 +207,10 @@ function activate(fn::Function, dir::AbstractPath)
   end
   flat = collect(Iterators.flatten((ctx.write, channel_collection)))
 
-<<<<<<< HEAD
-    # If caught is not nothing (e.g. an exception), rethrow.
-    caught != nothing && throw(caught)
-=======
   # Write to session_index.arrow file.
   open(paths_file, "w") do io
     Arrow.write(io, (trace_directory=flat,))
   end
->>>>>>> address
 
   # Write out to the TraceManifest.toml manifest.
   open(manifest_path, "w") do io
@@ -240,22 +242,5 @@ function reconstruct_trace(gen_fn, dir)
   # println(gen_fn)
   # Gen.generate(gen_fn, metadata.args[1], trace)
 end
-
-function query_metadata(dir::AbstractPath)
-
-end
-## Data queries
-function query_context(dir::AbstractPath)
-  # dir is a path to the directory. not to a specific serialization.
-end
-
-function query_full(dir::AbstractPath)
-  # How to query all contexts at once?
-end
-
-function query_serialization(dir::AbstractPath)
-  # For a specific serialization
-end
-
 
 end # module
