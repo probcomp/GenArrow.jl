@@ -1,0 +1,42 @@
+module GenArrowTour
+
+# This file provides an introductory tour of GenArrow.jl by generating and storing traces from a space-intensive generative function.
+
+using Arrow
+using Gen
+using GenArrow
+using FilePathsBase
+
+
+@gen function submodel()
+  for k in 1:100
+    {:y => k => k} ~ normal(0.0, 1.0)
+  end
+end
+
+@gen function model()
+  for k in 1:1000
+    {:x => k => k} ~ mvnormal(zeros(100), I(100))
+  end
+  q ~ submodel()
+end
+
+activate(Path("./sample")) do ctx
+  # Here, we sample a `tr::Gen.Trace` for our model.
+  # Then, we save it to the serialization directory
+  # with `GenArrow.write!`
+  tr = simulate(model, ())
+  trace_path = GenArrow.write!(ctx, tr; x=333, y=111, z=123)
+  print("path ", trace_path)
+  # `GenArrow` keeps track of each trace using a UUID.
+
+  # Multiple `write!` statements are perfectly acceptable.
+  tr = simulate(model, ())
+end
+
+
+# Now, once we have a serialization directory, we may want to query it later,
+# to perform analysis on the traces we sampled from our models or inference
+# algorithms.
+
+end # module
