@@ -11,7 +11,7 @@ using LinearAlgebra
 # Here, we define a model and a submodel.
 
 @gen function good()
-  for k in 1:2
+  for k in 1:5
     {:good => k} ~ normal(0.0, 1.0)
   end
 end
@@ -24,8 +24,8 @@ end
 
 @gen function model()
   for k in 1:10
-    z = {:q => k} ~ normal(0.0, 1.0)
-    if z >= 0
+    z = {:q => k} ~ categorical([0.5, 0.5])
+    if z == 1
       {k} ~ good()
     else
       {k} ~ bad()
@@ -44,7 +44,7 @@ activate(Path("./sample")) do ctx
   # Then, we save it to the serialization directory
   # with `GenArrow.write!`
   traces = Gen.Trace[]
-  for t in 1:100
+  for t in 1:10
     tr = simulate(model, ())
     push!(traces, tr)
   end
@@ -56,7 +56,8 @@ end
 # Now, once we have a serialization directory, we may want to query it later,
 # to perform analysis on the traces we sampled from our models or inference
 # algorithms.
-d = Path("./sample/1.arrow")
+d = TOML.parsefile("sample/TraceManifest.toml")
+d = Path("./sample/$(length(d)).arrow")
 view = GenArrow.view(d)
-println(view[:q=>1])
+println(view[1=>:good=>1])
 end # module
