@@ -4,7 +4,7 @@ using Arrow
 export GenTable
 
 struct GenTable
-  metadata_table::Arrow.Table
+  metadata_table::Union{Arrow.Table,Nothing} # This is temporary for Cora
   choice_table::Arrow.Table
   addrs_trie
   addrs_dict

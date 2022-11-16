@@ -189,7 +189,7 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
   end
 
   # Flush to arrow?
-  Arrow.write(metadata_path, metadata) # TODO: Why does Cora fail?
+  # Arrow.write(metadata_path, metadata) # TODO: Why does Cora fail?
   serialize(string(addrs_trie_path), address_trie)
   serialize(string(addrs_dict_path), address_dict)
 
@@ -253,15 +253,19 @@ end
 traverse(tr::Gen.Trace, addrs_trie::AddressTree, addrs_dict::Dict) = traverse(tr, Dict(), addrs_trie, addrs_dict)
 traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode(), Dict())
 
-function view(dir::AbstractPath)
+function view(dir::AbstractPath; metadata=false)
   paths = Arrow.Table(dir)[:path]
   dir = Path(paths[1]) # TODO: Handle multiple writes.
-  metadata_path = FilePathsBase.join(dir, "metadata.arrow")
   addrs_path = FilePathsBase.join(dir, "addrs.jls")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
   addrs_trie = deserialize("$(dir)/addrs_trie.jls")
   addrs_dict = deserialize("$(dir)/addrs_dict.jls")
-  GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), addrs_trie, addrs_dict) # Use address dictionary for type?
+  if metadata # This is temporary for cora
+    metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+    return GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), addrs_trie, addrs_dict) # Use address dictionary for type?
+  else
+    return GenTable(nothing, Arrow.Table(choices_path), addrs_trie, addrs_dict)
+  end
 end
 
 function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
