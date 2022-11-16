@@ -1,7 +1,5 @@
 module GenArrow
 using Serialization
-using BSON
-using JSON
 using DataFrames
 using Gen
 using UUIDs
@@ -12,84 +10,17 @@ using ArrowTypes
 using FilePathsBase
 using Distributed
 using Tables
-include("./traverse.jl")
+include("./AddressTrie.jl")
 using .AddressTreeStruct
 
 #####
 ##### exports
 ###
 
-export activate, write!, address_filter, get_serializable_args, get_remote_channel
+export activate, write!, get_serializable_args, get_remote_channel
 
 #####
 ##### Serialization
-#####
-
-# A new interface which users can implement for their `T::Trace`
-# type to extract serializable arguments.
-function get_serializable_args(tr::T) where {T<:Gen.Trace}
-  return Gen.get_args(tr)
-end
-
-function traverse!(chm::Gen.ChoiceMap, prefix::Tuple, addrs::AddressTree, flat::Vector, typeset::Set)
-  for (k, v) in get_values_shallow(chm)
-    push!(typeset, typeof(v))
-    addrs[(prefix..., k)] = v
-    push!(flat, v)
-  end
-
-  for (k, subchm) in get_submaps_shallow(chm)
-    traverse!(subchm, (prefix..., k),addrs,  flat, typeset)
-  end
-end
-
-function second(x)
-  return x[2]
-end
-
-function traverse(tr::Gen.Trace)
-  ret = get_retval(tr)
-  args = get_serializable_args(tr)
-  score = get_score(tr)
-  gen_fn = repr(get_gen_fn(tr))
-
-  typeset = Set(Type[]) # Collect all the types seen?
-  flattened_choices = []
-  addrs = InnerNode()
-  traverse!(get_choices(tr), tuple(), addrs, flattened_choices, typeset)
-  ts = collect(typeset)
-  sparse = map(flattened_choices) do v
-    (; (typeof(v) <: t ? Symbol(t) => v : Symbol(t) => missing for t in ts)...)
-  end
-  metadata = (; gen_fn, score, ret, args)
-  return metadata, addrs, sparse
-end
-
-function save(dir::AbstractPath, tr::Gen.Trace; user_provided_metadata)
-  metadata, addrs, choices = traverse(tr)
-  metadata_path = FilePathsBase.join(dir, "metadata.arrow")
-  addrs_path = FilePathsBase.join(dir, "addrs.bson")
-  choices_path = FilePathsBase.join(dir, "choices.arrow")
-  metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
-  x = (; user_provided_metadata...)
-  tbl = merge(metadata, x)
-  Arrow.write(metadata_path, [tbl]) 
-  serialize(string(addrs_path)*"w", addrs)
-  # bson(string(addrs_path), Dict(:bson=>addrs))
-  # open(string(addrs_path)*"j", "w") do f
-  #   JSON.print(f, addrs,0)
-  # end
-
-  # fields = fieldnames(typeof(choices[1]))
-  # fields = fields[[1,2,3,5,6]]
-  # println(fields)
-  # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
-  Arrow.write(choices_path, choices)
-  return dir
-end
-
-#####
-##### Serialization target directory management
 #####
 
 const MANIFEST_NAME = "TraceManifest.toml"
@@ -106,6 +37,7 @@ mutable struct SerializationContext
   datetime::String
   write::Vector
   write_channel::RemoteChannel
+  df_buffer::DataFrame
 end
 
 import Base: push!
@@ -117,85 +49,27 @@ function get_remote_channel(ctx::SerializationContext)
   return ctx.write_channel
 end
 
-function activate(dir::AbstractPath)
-  @info "(GenArrow) Activating serialization session context in $(dir)"
-  now, dt_now = time(), Dates.now()
-  datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
-  u4 = uuid4()
-  u5 = uuid5(u4, repr(now))
-  manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
-
-  # If a manifest already exists, use it.
-  if FilePathsBase.exists(manifest_path)
-
-    # After parsing, soft verify that it's the correct format.
-    # TODO: make this compatible with S3Path.
-    manifest_path = string(manifest_path)
-    d = TOML.parsefile(manifest_path)
-    session = Dict{String,Any}("timestamp" => datetime) # Consider separating by run of project?
-    d["$(repr(length(d) + 1))"] = session
-
-    # If it doesn't exist, make it.
-  else
-    d = Dict()
-    session = Dict{String,Any}("timestamp" => datetime)
-    d["$(repr(1))"] = session
-  end
-
-  return SerializationContext(dir, d, session, u5, now, datetime, Any[], RemoteChannel(() -> Channel(Inf)))
+# A new interface which users can implement for their `T::Trace`
+# type to extract serializable arguments.
+function get_serializable_args(tr::T) where {T<:Gen.Trace}
+  return Gen.get_args(tr)
 end
 
-function write!(ctx::SerializationContext, traces::Vector{Gen.Trace}; user_provided_metadata...)
-  dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
-  mkpath(dir)
-  save(dir, traces; user_provided_metadata)
-  string_dir = string(dir)
-  push!(ctx, (; path=string_dir, user_provided_metadata...))
-  return dir
-end
-function write!(ctx::SerializationContext, tr::Gen.Trace; user_provided_metadata...)
-  dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
-  mkpath(dir)
-  save(dir, tr; user_provided_metadata)
-  string_dir = string(dir)
-
-  # Here, we push metadata from successful (we have to replace this
-  # with the channel functionality)
-  push!(ctx, (; path=string_dir, user_provided_metadata...))
-  return dir
-end
-
-function write!(dir::AbstractPath, ctx_remote_channel::RemoteChannel, tr::Gen.Trace;
-  user_provided_metadata...)
-  dir = FilePathsBase.join(dir, "$(uuid4())")
-  mkpath(dir)
-  save(dir, tr; user_provided_metadata)
-  string_dir = string(dir)
-
-  # Here, we push metadata from successful (we have to replace this
-  # with the channel functionality)
-  Base.put!(ctx_remote_channel, (; path=string_dir, user_provided_metadata...))
-  return dir # careful here in case remote stalls?
-end
-
-# What is this?
-function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
-  ctx.session
-  haskey(metadata, "paths") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `paths` key.")
-  haskey(metadata, "timestamp") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `timestamp` key.")
-  merge!(ctx.session, metadata)
-end
+#####################
+# Context Activation
+#####################
 
 function activate(fn::Function, dir::AbstractPath)
   mkpath(dir)
   ctx = activate(dir)
+  display(ctx)
   manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
 
   # caught = try
   fn(ctx)
-    # nothing
+  # nothing
   # catch e
-    # throw e
+  # throw e
   # end
 
   # Serialize any active data written before the exception was thrown.
@@ -223,16 +97,151 @@ function activate(fn::Function, dir::AbstractPath)
   return ctx
 end
 
+function activate(dir::AbstractPath)
+  @info "(GenArrow) Activating serialization session context in $(dir)"
+  now, dt_now = time(), Dates.now()
+  datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
+  u4 = uuid4()
+  u5 = uuid5(u4, repr(now))
+  manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
+
+  # If a manifest already exists, use it.
+  if FilePathsBase.exists(manifest_path)
+
+    # After parsing, soft verify that it's the correct format.
+    # TODO: make this compatible with S3Path.
+    manifest_path = string(manifest_path)
+    d = TOML.parsefile(manifest_path)
+    session = Dict{String,Any}("timestamp" => datetime) # Consider separating by run of project?
+    d["$(repr(length(d) + 1))"] = session
+
+    # If it doesn't exist, make it.
+  else
+    d = Dict()
+    session = Dict{String,Any}("timestamp" => datetime)
+    d["$(repr(1))"] = session
+  end
+
+  return SerializationContext(dir, d, session, u5, now, datetime, Any[], RemoteChannel(() -> Channel(Inf)), DataFrame())
+end
+
+function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
+  ctx.session
+  haskey(metadata, "paths") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `paths` key.")
+  haskey(metadata, "timestamp") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `timestamp` key.")
+  merge!(ctx.session, metadata)
+end
+
+function write!(ctx::SerializationContext, traces::Vector{<:Gen.Trace}; user_provided_metadata...)
+  dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
+  mkpath(dir)
+  save(dir, traces, ctx.df_buffer; user_provided_metadata)
+  # TODO: Flush ctx.df_buffer?
+  string_dir = string(dir)
+
+  # Here, we push metadata from successful (we have to replace this
+  # with the channel functionality)
+  push!(ctx, (; path=string_dir, user_provided_metadata...))
+  return dir
+end
+
+
+# function write!(dir::AbstractPath, ctx_remote_channel::RemoteChannel, tr::Gen.Trace; user_provided_metadata...)
+#   dir = FilePathsBase.join(dir, "$(uuid4())")
+#   mkpath(dir)
+#   save(dir, tr, DataFrame(); user_provided_metadata)
+#   string_dir = string(dir)
+
+#   # Here, we push metadata from successful (we have to replace this
+#   # with the channel functionality)
+#   Base.put!(ctx_remote_channel, (; path=string_dir, user_provided_metadata...))
+#   return dir # careful here in case remote stalls?
+# end
+# write!(ctx::SerializationContext, tr::Gen.Trace; user_provided_metadata...) = write!(ctx, [tr], user_provided_metadata...)
+
+function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; user_provided_metadata)
+  metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+  addrs_path = FilePathsBase.join(dir, "addrs.jls")
+  choices_path = FilePathsBase.join(dir, "choices.arrow")
+
+  # Construct super-trie and populate df
+  metadata = []
+  address_trie = InnerNode()
+  # Metadata arrow table contains ret, args, score, gen_fn, user_provided_metadata
+  for tr in traces
+    ret = get_retval(tr)
+    args = get_serializable_args(tr)
+    score = get_score(tr)
+    gen_fn = repr(get_gen_fn(tr))
+    push!(metadata, (ret=ret, args=args, score=score, gen_fn=gen_fn))
+    traverse(tr, address_trie)
+  end
+
+  # Flush to arrow?
+  Arrow.write(metadata_path, metadata) 
+  serialize(string(addrs_path), address_trie)
+
+  # fields = fieldnames(typeof(choices[1]))
+  # fields = fields[[1,2,3,5,6]]
+  # println(fields)
+  # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
+  Arrow.write(choices_path, df)
+  return address_trie, df
+end
+
+function save(dir::AbstractPath, tr::Gen.Trace, df::DataFrame; user_provided_metadata)
+#   metadata, addrs, choices = traverse(tr)
+#   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+#   addrs_path = FilePathsBase.join(dir, "addrs.bson")
+#   choices_path = FilePathsBase.join(dir, "choices.arrow")
+#   metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
+#   x = (; user_provided_metadata...)
+#   tbl = merge(metadata, x)
+#   Arrow.write(metadata_path, [tbl])
+#   serialize(string(addrs_path) * "w", addrs)
+#   # bson(string(addrs_path), Dict(:bson=>addrs))
+#   # open(string(addrs_path)*"j", "w") do f
+#   #   JSON.print(f, addrs,0)
+#   # end
+
+#   # fields = fieldnames(typeof(choices[1]))
+#   # fields = fields[[1,2,3,5,6]]
+#   # println(fields)
+#   # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
+#   Arrow.write(choices_path, choices)
+#   return dir
+end
+
+
+function traverse!(chm::Gen.ChoiceMap, row, addrs::AddressTree, prefix::Tuple)
+  for (k, v) in get_values_shallow(chm)
+    row[(prefix..., k)] = v 
+    addrs[(prefix..., k)] = 0
+  end
+
+  for (k, subchm) in get_submaps_shallow(chm)
+    traverse!(subchm, row, addrs, (prefix..., k))
+  end
+end
+
+function traverse(tr::Gen.Trace, row, addrs::AddressTree)
+  traverse!(get_choices(tr), row, addrs, tuple())
+  return row, addrs
+end
+traverse(tr::Gen.Trace, addrs::AddressTree) = traverse(tr, Dict(), addrs)
+traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode())
+
+
 function reconstruct_trace(gen_fn, dir)
   function lst_to_pairs(addr)
-    reduce((addr,y) -> Pair(y,addr), reverse(addr))
+    reduce((addr, y) -> Pair(y, addr), reverse(addr))
   end
   choice_tbl = Arrow.Table("$(dir)/choices.arrow")
   addrs = deserialize("$(dir)/addrs.arrow")
   metadata = Arrow.Table("$(dir)/metadata.arrow")
   mappings = []
   for all_choices_of_certain_type in choice_tbl
-    for (i,val) in enumerate(all_choices_of_certain_type)
+    for (i, val) in enumerate(all_choices_of_certain_type)
       if !isequal(missing, val)
         push!(mappings, (lst_to_pairs(addrs[i]), val))
       end
