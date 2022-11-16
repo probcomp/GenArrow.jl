@@ -12,6 +12,8 @@ using Distributed
 using Tables
 include("./AddressTrie.jl")
 using .AddressTreeStruct
+include("./GenTable.jl")
+using .GenTableStruct
 
 #####
 ##### exports
@@ -62,7 +64,7 @@ end
 function activate(fn::Function, dir::AbstractPath)
   mkpath(dir)
   ctx = activate(dir)
-  display(ctx)
+  # display(ctx)
   manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
 
   # caught = try
@@ -79,12 +81,11 @@ function activate(fn::Function, dir::AbstractPath)
   while isready(ctx.write_channel)
     push!(channel_collection, take!(ctx.write_channel))
   end
-  flat = collect(Iterators.flatten((ctx.write, channel_collection)))
+  # println("Files produced: ", ctx.write)
+  # flat = collect(Iterators.flatten((ctx.write, channel_collection))) # Add back later
 
   # Write to session_index.arrow file.
-  open(paths_file, "w") do io
-    Arrow.write(io, (trace_directory=flat,))
-  end
+  Arrow.write(paths_file, ctx.write)
 
   # Write out to the TraceManifest.toml manifest.
   open(manifest_path, "w") do io
@@ -174,8 +175,10 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
     score = get_score(tr)
     gen_fn = repr(get_gen_fn(tr))
     push!(metadata, (ret=ret, args=args, score=score, gen_fn=gen_fn))
-    traverse(tr, address_trie)
+    row, _ = traverse(tr, address_trie)
+    push!(df, row, cols=:union)
   end
+  
 
   # Flush to arrow?
   Arrow.write(metadata_path, metadata) 
@@ -215,7 +218,7 @@ end
 
 function traverse!(chm::Gen.ChoiceMap, row, addrs::AddressTree, prefix::Tuple)
   for (k, v) in get_values_shallow(chm)
-    row[(prefix..., k)] = v 
+    row[Symbol((prefix..., k))] = v 
     addrs[(prefix..., k)] = 0
   end
 
@@ -230,6 +233,15 @@ function traverse(tr::Gen.Trace, row, addrs::AddressTree)
 end
 traverse(tr::Gen.Trace, addrs::AddressTree) = traverse(tr, Dict(), addrs)
 traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode())
+
+function view(dir::AbstractPath)
+  paths = Arrow.Table(dir)[:path]
+  dir = Path(paths[1])
+  metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+  addrs_path = FilePathsBase.join(dir, "addrs.jls")
+  choices_path = FilePathsBase.join(dir, "choices.arrow")
+  GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), 1 ) # Use address dictionary for type?
+end
 
 
 function reconstruct_trace(gen_fn, dir)
