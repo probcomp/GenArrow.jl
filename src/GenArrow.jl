@@ -30,6 +30,14 @@ const MANIFEST_NAME = "TraceManifest.toml"
 # TODO: possible to make this threadsafe?
 # TODO: allow writes to push to a channel.
 
+ArrowTypes.ArrowKind(::Type{Nothing}) = ArrowTypes.NullKind()
+ArrowTypes.ArrowType(::Type{Nothing}) = Missing
+ArrowTypes.toarrow(::Nothing) = missing
+const NOTHING = Symbol("JuliaLang.Nothing")
+ArrowTypes.arrowname(::Type{Nothing}) = NOTHING
+ArrowTypes.JuliaType(::Val{NOTHING}) = Nothing
+ArrowTypes.fromarrow(::Type{Nothing}, ::Missing) = nothing
+
 mutable struct SerializationContext
   dir::AbstractPath
   manifest::Dict
@@ -81,7 +89,6 @@ function activate(fn::Function, dir::AbstractPath)
   while isready(ctx.write_channel)
     push!(channel_collection, take!(ctx.write_channel))
   end
-  # println("Files produced: ", ctx.write)
   # flat = collect(Iterators.flatten((ctx.write, channel_collection))) # Add back later
 
   # Write to session_index.arrow file.
@@ -162,12 +169,14 @@ end
 
 function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; user_provided_metadata)
   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
-  addrs_path = FilePathsBase.join(dir, "addrs.jls")
+  addrs_trie_path = FilePathsBase.join(dir, "addrs_trie.jls")
+  addrs_dict_path = FilePathsBase.join(dir, "addrs_dict.jls")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
 
   # Construct super-trie and populate df
   metadata = []
   address_trie = InnerNode()
+  address_dict = Dict()
   # Metadata arrow table contains ret, args, score, gen_fn, user_provided_metadata
   for tr in traces
     ret = get_retval(tr)
@@ -175,74 +184,89 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
     score = get_score(tr)
     gen_fn = repr(get_gen_fn(tr))
     push!(metadata, (ret=ret, args=args, score=score, gen_fn=gen_fn))
-    row, _ = traverse(tr, address_trie)
+    row, _, _ = traverse(tr, address_trie, address_dict)
     push!(df, row, cols=:union)
   end
-  
 
   # Flush to arrow?
-  Arrow.write(metadata_path, metadata) 
-  serialize(string(addrs_path), address_trie)
+  Arrow.write(metadata_path, metadata)
+  serialize(string(addrs_trie_path), address_trie)
+  serialize(string(addrs_dict_path), address_dict)
 
   # fields = fieldnames(typeof(choices[1]))
   # fields = fields[[1,2,3,5,6]]
   # println(fields)
   # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
   Arrow.write(choices_path, df)
-  return address_trie, df
+  return address_trie, address_dict, df
 end
 
 function save(dir::AbstractPath, tr::Gen.Trace, df::DataFrame; user_provided_metadata)
-#   metadata, addrs, choices = traverse(tr)
-#   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
-#   addrs_path = FilePathsBase.join(dir, "addrs.bson")
-#   choices_path = FilePathsBase.join(dir, "choices.arrow")
-#   metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
-#   x = (; user_provided_metadata...)
-#   tbl = merge(metadata, x)
-#   Arrow.write(metadata_path, [tbl])
-#   serialize(string(addrs_path) * "w", addrs)
-#   # bson(string(addrs_path), Dict(:bson=>addrs))
-#   # open(string(addrs_path)*"j", "w") do f
-#   #   JSON.print(f, addrs,0)
-#   # end
+  #   metadata, addrs, choices = traverse(tr)
+  #   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+  #   addrs_path = FilePathsBase.join(dir, "addrs.bson")
+  #   choices_path = FilePathsBase.join(dir, "choices.arrow")
+  #   metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
+  #   x = (; user_provided_metadata...)
+  #   tbl = merge(metadata, x)
+  #   Arrow.write(metadata_path, [tbl])
+  #   serialize(string(addrs_path) * "w", addrs)
+  #   # bson(string(addrs_path), Dict(:bson=>addrs))
+  #   # open(string(addrs_path)*"j", "w") do f
+  #   #   JSON.print(f, addrs,0)
+  #   # end
 
-#   # fields = fieldnames(typeof(choices[1]))
-#   # fields = fields[[1,2,3,5,6]]
-#   # println(fields)
-#   # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
-#   Arrow.write(choices_path, choices)
-#   return dir
+  #   # fields = fieldnames(typeof(choices[1]))
+  #   # fields = fields[[1,2,3,5,6]]
+  #   # println(fields)
+  #   # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
+  #   Arrow.write(choices_path, choices)
+  #   return dir
 end
 
+function address_to_symbol(addr::Tuple)
+  if length(addr) == 1
+    return addr[1]
+  end
+  sym = reduce((addr, y) -> Pair(y, addr), reverse(addr))
+end
 
-function traverse!(chm::Gen.ChoiceMap, row, addrs::AddressTree, prefix::Tuple)
+function traverse!(chm::Gen.ChoiceMap, row, addrs_trie::AddressTree, addrs_dict::Dict, prefix::Tuple, count::Int)
   for (k, v) in get_values_shallow(chm)
-    row[Symbol((prefix..., k))] = v 
-    addrs[(prefix..., k)] = 0
+    addr = (prefix..., k)
+    row[Symbol(count)] = v
+    addrs_trie[addr] = 0 # Add type info?
+    key = address_to_symbol(addr) # Slowish
+    if !haskey(addrs_dict, key)
+      addrs_dict[key] = count
+    end
+    count += 1
+
   end
 
   for (k, subchm) in get_submaps_shallow(chm)
-    traverse!(subchm, row, addrs, (prefix..., k))
+    count = traverse!(subchm, row, addrs_trie, addrs_dict, (prefix..., k), count)
   end
+  return count
 end
 
-function traverse(tr::Gen.Trace, row, addrs::AddressTree)
-  traverse!(get_choices(tr), row, addrs, tuple())
-  return row, addrs
+function traverse(tr::Gen.Trace, row, addrs_trie::AddressTree, addrs_dict::Dict)
+  leaves = traverse!(get_choices(tr), row, addrs_trie, addrs_dict, tuple(), 1)
+  return row, addrs_trie, addrs_dict
 end
-traverse(tr::Gen.Trace, addrs::AddressTree) = traverse(tr, Dict(), addrs)
-traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode())
+traverse(tr::Gen.Trace, addrs_trie::AddressTree, addrs_dict::Dict) = traverse(tr, Dict(), addrs_trie, addrs_dict)
+traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode(), Dict())
 
 function view(dir::AbstractPath)
   paths = Arrow.Table(dir)[:path]
-  dir = Path(paths[1])
+  dir = Path(paths[1]) # TODO: Handle multiple writes.
   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
   addrs_path = FilePathsBase.join(dir, "addrs.jls")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
-  GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), 1 ) # Use address dictionary for type?
+  addrs_trie = deserialize("$(dir)/addrs_trie.jls")
+  addrs_dict = deserialize("$(dir)/addrs_dict.jls")
+  GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), addrs_trie, addrs_dict) # Use address dictionary for type?
 end
-
 
 function reconstruct_trace(gen_fn, dir)
   function lst_to_pairs(addr)

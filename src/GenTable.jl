@@ -6,21 +6,14 @@ export GenTable
 struct GenTable
   metadata_table::Arrow.Table
   choice_table::Arrow.Table
-  addrs
+  addrs_trie
+  addrs_dict
 end
 
 function Base.getindex(gentable::GenTable, address::Pair)
-  key = []
-  current = address
-
-  while isa(current, Pair)
-    push!(key, current[1])
-    current = current[2]
-  end
-  push!(key, current)
-  key = Symbol(Tuple(key))
+  col = gentable.addrs_dict[address]
   try
-    return gentable.choice_table[key]
+    return gentable.choice_table[Symbol(col)]
   catch e
     throw(KeyError("$(address)"))
   end
