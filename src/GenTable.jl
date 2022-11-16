@@ -11,9 +11,8 @@ struct GenTable
 end
 
 function Base.getindex(gentable::GenTable, address::Pair)
-  col = gentable.addrs_dict[address]
   try
-    return gentable.choice_table[Symbol(col)]
+    return gentable.choice_table[Symbol(address)]
   catch e
     throw(KeyError("$(address)"))
   end

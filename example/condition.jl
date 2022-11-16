@@ -12,13 +12,13 @@ using LinearAlgebra
 
 @gen function good()
   for k in 1:5
-    {:good => k} ~ normal(0.0, 1.0)
+    {:good => k} ~ normal(0.0, 0.1)
   end
 end
 
 @gen function bad()
   for k in 1:5
-    {:bad => k} ~ normal(0.0, 1.0)
+    {:bad => k} ~ normal(0.0, 3.0)
   end
 end
 

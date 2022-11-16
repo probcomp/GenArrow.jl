@@ -234,11 +234,11 @@ end
 function traverse!(chm::Gen.ChoiceMap, row, addrs_trie::AddressTree, addrs_dict::Dict, prefix::Tuple, count::Int)
   for (k, v) in get_values_shallow(chm)
     addr = (prefix..., k)
-    row[Symbol(count)] = v
-    addrs_trie[addr] = 0 # Add type info?
     key = address_to_symbol(addr) # Slowish
+    row[Symbol(key)] = v
     if !haskey(addrs_dict, key)
       addrs_dict[key] = count
+      addrs_trie[addr] = count # Add type info?
     end
     count += 1
 
