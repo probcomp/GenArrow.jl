@@ -189,14 +189,10 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
   end
 
   # Flush to arrow?
-  Arrow.write(metadata_path, metadata)
+  Arrow.write(metadata_path, metadata) # TODO: Why does Cora fail?
   serialize(string(addrs_trie_path), address_trie)
   serialize(string(addrs_dict_path), address_dict)
 
-  # fields = fieldnames(typeof(choices[1]))
-  # fields = fields[[1,2,3,5,6]]
-  # println(fields)
-  # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
   Arrow.write(choices_path, df)
   return address_trie, address_dict, df
 end
@@ -266,6 +262,18 @@ function view(dir::AbstractPath)
   addrs_trie = deserialize("$(dir)/addrs_trie.jls")
   addrs_dict = deserialize("$(dir)/addrs_dict.jls")
   GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), addrs_trie, addrs_dict) # Use address dictionary for type?
+end
+
+function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
+  df = DataFrame(gentable.choice_table)[index, :]
+  columns = names(df)
+  mappings = []
+  for col in columns
+    if !isequal(df[col], missing)
+      push!(mappings, (eval(Meta.parse(col)), df[col]))
+    end
+  end
+  choicemap(mappings...)
 end
 
 function reconstruct_trace(gen_fn, dir)
