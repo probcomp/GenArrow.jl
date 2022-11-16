@@ -44,7 +44,7 @@ activate(Path("./sample")) do ctx
   # Then, we save it to the serialization directory
   # with `GenArrow.write!`
   traces = Gen.Trace[]
-  for t in 1:10
+  for t in 1:100
     tr = simulate(model, ())
     push!(traces, tr)
   end
