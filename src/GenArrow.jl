@@ -253,10 +253,9 @@ end
 traverse(tr::Gen.Trace, addrs_trie::AddressTree, addrs_dict::Dict) = traverse(tr, Dict(), addrs_trie, addrs_dict)
 traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode(), Dict())
 
-function view(dir::AbstractPath; metadata=false)
+function view(dir::AbstractPath; metadata=true)
   paths = Arrow.Table(dir)[:path]
   dir = Path(paths[1]) # TODO: Handle multiple writes.
-  addrs_path = FilePathsBase.join(dir, "addrs.jls")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
   addrs_trie = deserialize("$(dir)/addrs_trie.jls")
   addrs_dict = deserialize("$(dir)/addrs_dict.jls")
