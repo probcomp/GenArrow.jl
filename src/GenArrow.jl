@@ -189,7 +189,11 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
   end
 
   # Flush to arrow?
-  # Arrow.write(metadata_path, metadata) # TODO: Why does Cora fail?
+  args = []
+  for meta in metadata
+    push!(args, (; args=meta.args))
+  end
+  Arrow.write(metadata_path, args) # TODO: Why does Cora fail?
   serialize(string(addrs_trie_path), address_trie)
   serialize(string(addrs_dict_path), address_dict)
 
@@ -276,27 +280,29 @@ function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses st
       push!(mappings, (eval(Meta.parse(col)), df[col]))
     end
   end
-  choicemap(mappings...)
+  args = DataFrame(gentable.metadata_table)[index, 1]
+  chm = choicemap(mappings...)
+  return Gen.generate(chm, args)
 end
 
-function reconstruct_trace(gen_fn, dir)
-  function lst_to_pairs(addr)
-    reduce((addr, y) -> Pair(y, addr), reverse(addr))
-  end
-  choice_tbl = Arrow.Table("$(dir)/choices.arrow")
-  addrs = deserialize("$(dir)/addrs.arrow")
-  metadata = Arrow.Table("$(dir)/metadata.arrow")
-  mappings = []
-  for all_choices_of_certain_type in choice_tbl
-    for (i, val) in enumerate(all_choices_of_certain_type)
-      if !isequal(missing, val)
-        push!(mappings, (lst_to_pairs(addrs[i]), val))
-      end
-    end
-  end
-  chm = Gen.choicemap(mappings...)
-  # println(gen_fn)
-  # Gen.generate(gen_fn, metadata.args[1], trace)
-end
+# function reconstruct_trace(gen_fn, dir)
+#   function lst_to_pairs(addr)
+#     reduce((addr, y) -> Pair(y, addr), reverse(addr))
+#   end
+#   choice_tbl = Arrow.Table("$(dir)/choices.arrow")
+#   addrs = deserialize("$(dir)/addrs.arrow")
+#   metadata = Arrow.Table("$(dir)/metadata.arrow")
+#   mappings = []
+#   for all_choices_of_certain_type in choice_tbl
+#     for (i, val) in enumerate(all_choices_of_certain_type)
+#       if !isequal(missing, val)
+#         push!(mappings, (lst_to_pairs(addrs[i]), val))
+#       end
+#     end
+#   end
+#   chm = Gen.choicemap(mappings...)
+#   # println(gen_fn)
+#   # Gen.generate(gen_fn, metadata.args[1], trace)
+# end
 
 end # module
