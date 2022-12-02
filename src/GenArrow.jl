@@ -271,7 +271,7 @@ function view(dir::AbstractPath; metadata=true)
   end
 end
 
-function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
+function reconstruct_trace(gen_fn, gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
   df = DataFrame(gentable.choice_table)[index, :]
   columns = names(df)
   mappings = []
@@ -282,7 +282,7 @@ function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses st
   end
   args = DataFrame(gentable.metadata_table)[index, 1]
   chm = choicemap(mappings...)
-  return Gen.generate(chm, args)
+  Gen.generate(gen_fn, args, chm)
 end
 
 # function reconstruct_trace(gen_fn, dir)
