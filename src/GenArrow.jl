@@ -72,15 +72,9 @@ end
 function activate(fn::Function, dir::AbstractPath)
   mkpath(dir)
   ctx = activate(dir)
-  # display(ctx)
   manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
 
-  # caught = try
   fn(ctx)
-  # nothing
-  # catch e
-  # throw e
-  # end
 
   # Serialize any active data written before the exception was thrown.
   paths_file = FilePathsBase.join(dir, "$(length(ctx.manifest)).arrow")
@@ -98,9 +92,6 @@ function activate(fn::Function, dir::AbstractPath)
   open(manifest_path, "w") do io
     TOML.print(io, ctx.manifest; sorted=true)
   end
-
-  # If caught is not nothing (e.g. an exception), rethrow.
-  # caught != nothing && throw(caught)
 
   return ctx
 end
@@ -189,7 +180,11 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
   end
 
   # Flush to arrow?
-  Arrow.write(metadata_path, metadata) # TODO: Why does Cora fail?
+  args = []
+  for meta in metadata
+    push!(args, (; args=meta.args))
+  end
+  Arrow.write(metadata_path, args)
   serialize(string(addrs_trie_path), address_trie)
   serialize(string(addrs_dict_path), address_dict)
 
@@ -198,26 +193,7 @@ function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; use
 end
 
 function save(dir::AbstractPath, tr::Gen.Trace, df::DataFrame; user_provided_metadata)
-  #   metadata, addrs, choices = traverse(tr)
-  #   metadata_path = FilePathsBase.join(dir, "metadata.arrow")
-  #   addrs_path = FilePathsBase.join(dir, "addrs.bson")
-  #   choices_path = FilePathsBase.join(dir, "choices.arrow")
-  #   metadata = (gen_fn=metadata.gen_fn, score=metadata.score, args=metadata.args) # Ret?
-  #   x = (; user_provided_metadata...)
-  #   tbl = merge(metadata, x)
-  #   Arrow.write(metadata_path, [tbl])
-  #   serialize(string(addrs_path) * "w", addrs)
-  #   # bson(string(addrs_path), Dict(:bson=>addrs))
-  #   # open(string(addrs_path)*"j", "w") do f
-  #   #   JSON.print(f, addrs,0)
-  #   # end
-
-  #   # fields = fieldnames(typeof(choices[1]))
-  #   # fields = fields[[1,2,3,5,6]]
-  #   # println(fields)
-  #   # choices = [(; (v => getfield(x, v) for v in fields)...) for x in choices]
-  #   Arrow.write(choices_path, choices)
-  #   return dir
+  # TODO: Implement the single trace version. 
 end
 
 function address_to_symbol(addr::Tuple)
@@ -230,11 +206,11 @@ end
 function traverse!(chm::Gen.ChoiceMap, row, addrs_trie::AddressTree, addrs_dict::Dict, prefix::Tuple, count::Int)
   for (k, v) in get_values_shallow(chm)
     addr = (prefix..., k)
-    key = address_to_symbol(addr) # Slowish
+    key = address_to_symbol(addr) # TODO: Address speed of this
     row[Symbol(key)] = v
     if !haskey(addrs_dict, key)
       addrs_dict[key] = count
-      addrs_trie[addr] = count # Add type info?
+      addrs_trie[addr] = count
     end
     count += 1
 
@@ -253,18 +229,21 @@ end
 traverse(tr::Gen.Trace, addrs_trie::AddressTree, addrs_dict::Dict) = traverse(tr, Dict(), addrs_trie, addrs_dict)
 traverse(tr::Gen.Trace) = traverse(tr, Dict(), InnerNode(), Dict())
 
-function view(dir::AbstractPath)
+function view(dir::AbstractPath; metadata=true)
   paths = Arrow.Table(dir)[:path]
   dir = Path(paths[1]) # TODO: Handle multiple writes.
-  metadata_path = FilePathsBase.join(dir, "metadata.arrow")
-  addrs_path = FilePathsBase.join(dir, "addrs.jls")
   choices_path = FilePathsBase.join(dir, "choices.arrow")
   addrs_trie = deserialize("$(dir)/addrs_trie.jls")
   addrs_dict = deserialize("$(dir)/addrs_dict.jls")
-  GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), addrs_trie, addrs_dict) # Use address dictionary for type?
+  if metadata # TODO: This is temporary for application debugging
+    metadata_path = FilePathsBase.join(dir, "metadata.arrow")
+    return GenTable(Arrow.Table(metadata_path), Arrow.Table(choices_path), addrs_trie, addrs_dict) # Use address dictionary for type?
+  else
+    return GenTable(nothing, Arrow.Table(choices_path), addrs_trie, addrs_dict)
+  end
 end
 
-function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
+function reconstruct_trace(gen_fn, gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
   df = DataFrame(gentable.choice_table)[index, :]
   columns = names(df)
   mappings = []
@@ -273,27 +252,9 @@ function reconstruct_trace(gentable::GenTable, index::Int) # TODO: Slow. Uses st
       push!(mappings, (eval(Meta.parse(col)), df[col]))
     end
   end
-  choicemap(mappings...)
-end
-
-function reconstruct_trace(gen_fn, dir)
-  function lst_to_pairs(addr)
-    reduce((addr, y) -> Pair(y, addr), reverse(addr))
-  end
-  choice_tbl = Arrow.Table("$(dir)/choices.arrow")
-  addrs = deserialize("$(dir)/addrs.arrow")
-  metadata = Arrow.Table("$(dir)/metadata.arrow")
-  mappings = []
-  for all_choices_of_certain_type in choice_tbl
-    for (i, val) in enumerate(all_choices_of_certain_type)
-      if !isequal(missing, val)
-        push!(mappings, (lst_to_pairs(addrs[i]), val))
-      end
-    end
-  end
-  chm = Gen.choicemap(mappings...)
-  # println(gen_fn)
-  # Gen.generate(gen_fn, metadata.args[1], trace)
+  args = DataFrame(gentable.metadata_table)[index, 1]
+  chm = choicemap(mappings...)
+  Gen.generate(gen_fn, args, chm)
 end
 
 end # module
