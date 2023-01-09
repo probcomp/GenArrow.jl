@@ -26,28 +26,38 @@ export activate, write!, get_serializable_args, get_remote_channel
 #####
 
 const MANIFEST_NAME = "TraceManifest.toml"
+const CONTEXT_NAME = "Context.toml"
 
 # TODO: possible to make this threadsafe?
 # TODO: allow writes to push to a channel.
 
-ArrowTypes.ArrowKind(::Type{Nothing}) = ArrowTypes.NullKind()
-ArrowTypes.ArrowType(::Type{Nothing}) = Missing
-ArrowTypes.toarrow(::Nothing) = missing
-const NOTHING = Symbol("JuliaLang.Nothing")
-ArrowTypes.arrowname(::Type{Nothing}) = NOTHING
-ArrowTypes.JuliaType(::Val{NOTHING}) = Nothing
-ArrowTypes.fromarrow(::Type{Nothing}, ::Missing) = nothing
+# Consider making the user write this?
+# ArrowTypes.ArrowKind(::Type{Nothing}) = ArrowTypes.NullKind()
+# ArrowTypes.ArrowType(::Type{Nothing}) = Missing
+# ArrowTypes.toarrow(::Nothing) = missing
+# const NOTHING = Symbol("JuliaLang.Nothing")
+# ArrowTypes.arrowname(::Type{Nothing}) = NOTHING
+# ArrowTypes.JuliaType(::Val{NOTHING}) = Nothing
+# ArrowTypes.fromarrow(::Type{Nothing}, ::Missing) = nothing
+
+
+struct Handler
+  dir::AbstractPath
+  name::String
+  df_buffer::DataFrame
+  # lock
+end
 
 mutable struct SerializationContext
   dir::AbstractPath
-  manifest::Dict
-  session::Dict
+  # manifest::Dict
+  # session::Dict
   uuid::UUID
   timestamp::Float64
   datetime::String
+  handlers::Dict{String, Handler}
   write::Vector
   write_channel::RemoteChannel
-  df_buffer::DataFrame
 end
 
 import Base: push!
@@ -68,95 +78,103 @@ end
 #####################
 # Context Activation
 #####################
-
+"""
+Creates serialization context at directory dir
+"""
 function activate(fn::Function, dir::AbstractPath)
-  mkpath(dir)
+  mkpath(dir) 
+  @info "(GenArrow) Activating serialization session context in $(dir)"
   ctx = activate(dir)
-  manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
+  # create header file to organize context
 
-  fn(ctx)
+  fn(ctx) # Pass context which provides functions to create handlers
+  
+  ####
+  # 1. Clean up file handlers
+  # 2. Make sure all directories are referenced in manifest?
+  ####
 
   # Serialize any active data written before the exception was thrown.
-  paths_file = FilePathsBase.join(dir, "$(length(ctx.manifest)).arrow")
-  ctx.session["paths"] = string(paths_file)
-  channel_collection = []
-  while isready(ctx.write_channel)
-    push!(channel_collection, take!(ctx.write_channel))
-  end
+  # paths_file = FilePathsBase.join(dir, "$(length(ctx.manifest)).arrow")
+  # ctx.session["paths"] = string(paths_file)
+  # channel_collection = []
+  # while isready(ctx.write_channel)
+    # push!(channel_collection, take!(ctx.write_channel))
+  # end
   # flat = collect(Iterators.flatten((ctx.write, channel_collection))) # Add back later
 
   # Write to session_index.arrow file.
-  Arrow.write(paths_file, ctx.write)
+  # Arrow.write(paths_file, ctx.write)
 
   # Write out to the TraceManifest.toml manifest.
-  open(manifest_path, "w") do io
-    TOML.print(io, ctx.manifest; sorted=true)
-  end
+  # open(manifest_path, "w") do io
+    # TOML.print(io, ctx.manifest; sorted=true)
+  # end
 
   return ctx
 end
 
 function activate(dir::AbstractPath)
-  @info "(GenArrow) Activating serialization session context in $(dir)"
+  # create the header file for the context
   now, dt_now = time(), Dates.now()
   datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
   u4 = uuid4()
   u5 = uuid5(u4, repr(now))
+  handlers = Dict{String, Handler}()
   manifest_path = FilePathsBase.join(dir, MANIFEST_NAME)
 
   # If a manifest already exists, use it.
-  if FilePathsBase.exists(manifest_path)
+  if !FilePathsBase.exists(manifest_path)
+    TOML.parsefile(string(manifest_path))
+  end
 
     # After parsing, soft verify that it's the correct format.
     # TODO: make this compatible with S3Path.
-    manifest_path = string(manifest_path)
-    d = TOML.parsefile(manifest_path)
-    session = Dict{String,Any}("timestamp" => datetime) # Consider separating by run of project?
-    d["$(repr(length(d) + 1))"] = session
+    # manifest_path = string(manifest_path)
+  #   d = TOML.parsefile(manifest_path)
+  #   session = Dict{String,Any}("timestamp" => datetime) # Consider separating by run of project?
+  #   d["$(repr(length(d) + 1))"] = session
 
-    # If it doesn't exist, make it.
+
+  return SerializationContext(dir, u5, now, datetime, handlers, Any[], RemoteChannel(() -> Channel(Inf)))
+end
+
+function create_handler!(ctx::SerializationContext, name::String)
+  handler_name = FilePathsBase.join(ctx.dir, name)
+  handler = Handler(handler_name, name, DataFrame());
+  if !FilePathsBase.exists(handler_name)
+    mkdir(handler_name);
   else
-    d = Dict()
-    session = Dict{String,Any}("timestamp" => datetime)
-    d["$(repr(1))"] = session
+    # Throw error indicating handler exists
   end
-
-  return SerializationContext(dir, d, session, u5, now, datetime, Any[], RemoteChannel(() -> Channel(Inf)), DataFrame())
+  # acquire(ctx lock)
+  ctx.handlers[name] = handler
+  # release (ctx lock)
+  return handler
 end
 
-function write_session_metadata!(ctx::SerializationContext, metadata::Dict)
-  ctx.session
-  haskey(metadata, "paths") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `paths` key.")
-  haskey(metadata, "timestamp") && error("Metadata dictionary provided to `write_session_metadata!` must not contain a `timestamp` key.")
-  merge!(ctx.session, metadata)
+function write!(handler::Handler, traces::Vector{<:Gen.Trace}; user_provided_metadata...)
+  arrow_file = FilePathsBase.join(handler.dir , "$(uuid4())")
+  mkpath(arrow_file)
+  save(arrow_file, traces, handler.df_buffer; user_provided_metadata);
+  # string_dir = string(arrow_file)
+  # push!(ctx, (; path=string_dir, user_provided_metadata...))
+  return arrow_file
 end
 
-function write!(ctx::SerializationContext, traces::Vector{<:Gen.Trace}; user_provided_metadata...)
-  dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
-  mkpath(dir)
-  save(dir, traces, ctx.df_buffer; user_provided_metadata)
-  # TODO: Flush ctx.df_buffer?
-  string_dir = string(dir)
-
-  # Here, we push metadata from successful (we have to replace this
-  # with the channel functionality)
-  push!(ctx, (; path=string_dir, user_provided_metadata...))
-  return dir
-end
-
-
-# function write!(dir::AbstractPath, ctx_remote_channel::RemoteChannel, tr::Gen.Trace; user_provided_metadata...)
-#   dir = FilePathsBase.join(dir, "$(uuid4())")
+# function write!(ctx::SerializationContext, traces::Vector{<:Gen.Trace}; user_provided_metadata...)
+#   dir = FilePathsBase.join(ctx.dir, "$(uuid4())")
 #   mkpath(dir)
-#   save(dir, tr, DataFrame(); user_provided_metadata)
+#   save(dir, traces, ctx.df_buffer; user_provided_metadata)
+#   # TODO: Flush ctx.df_buffer?
 #   string_dir = string(dir)
 
 #   # Here, we push metadata from successful (we have to replace this
 #   # with the channel functionality)
-#   Base.put!(ctx_remote_channel, (; path=string_dir, user_provided_metadata...))
-#   return dir # careful here in case remote stalls?
+#   push!(ctx, (; path=string_dir, user_provided_metadata...))
+#   return dir
 # end
-# write!(ctx::SerializationContext, tr::Gen.Trace; user_provided_metadata...) = write!(ctx, [tr], user_provided_metadata...)
+
 
 function save(dir::AbstractPath, traces::Vector{<:Gen.Trace}, df::DataFrame; user_provided_metadata)
   metadata_path = FilePathsBase.join(dir, "metadata.arrow")

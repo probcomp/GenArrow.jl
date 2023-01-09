@@ -30,13 +30,16 @@ end
 # output.
 traces = []
 activate(Path("./sample")) do ctx
+  handler = GenArrow.create_handler!(ctx, "norm")
   # Here, we sample a `tr::Gen.Trace` for our model.
   # Then, we save it to the serialization directory
   # with `GenArrow.write!`
   tr = simulate(model, ())
   tr2 = simulate(model, ())
   traces = [tr, tr2]
-  GenArrow.write!(ctx, traces)
+  GenArrow.write!(handler, traces)
+  GenArrow.write!(handler, traces)
+  # GenArrow.write!(ctx, traces)
   # `GenArrow` keeps track of each trace using a UUID.
 
   # Multiple `write!` statements are perfectly acceptable.
@@ -46,7 +49,7 @@ end
 # Now, once we have a serialization directory, we may want to query it later,
 # to perform analysis on the traces we sampled from our models or inference
 # algorithms.
-d = Path("./sample/1.arrow")
-view = GenArrow.view(d)
-println(view[:q=>:y=>1=>1])
+# d = Path("./sample/1.arrow")
+# view = GenArrow.view(d)
+# println(view[:q=>:y=>1=>1])
 end # module
