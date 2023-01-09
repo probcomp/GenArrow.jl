@@ -1,6 +1,3 @@
-module AddressTreeStruct
-export AddressTree, InnerNode, TerminalNode
-
 abstract type AddressTree end
 mutable struct InnerNode <: AddressTree
     children::Dict
@@ -59,5 +56,4 @@ function subtrie(node::AddressTree, prefix) # Naive subtrie?
         end
     end
     return node
-end
 end

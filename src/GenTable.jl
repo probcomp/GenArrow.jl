@@ -1,8 +1,3 @@
-module GenTableStruct
-using Arrow
-
-export GenTable
-
 struct GenTable
   metadata_table::Union{Arrow.Table,Nothing} # This is temporary for Cora
   choice_table::Arrow.Table
@@ -17,5 +12,3 @@ function Base.getindex(gentable::GenTable, address::Pair)
     throw(KeyError("$(address)"))
   end
 end
-
-end # End Module

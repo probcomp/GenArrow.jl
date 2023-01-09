@@ -31,6 +31,7 @@ end
 traces = []
 activate(Path("./sample")) do ctx
   handler = GenArrow.create_handler!(ctx, "norm")
+  handler2 = GenArrow.create_handler!(ctx, "gauss")
   # Here, we sample a `tr::Gen.Trace` for our model.
   # Then, we save it to the serialization directory
   # with `GenArrow.write!`
@@ -38,7 +39,7 @@ activate(Path("./sample")) do ctx
   tr2 = simulate(model, ())
   traces = [tr, tr2]
   GenArrow.write!(handler, traces)
-  GenArrow.write!(handler, traces)
+  GenArrow.write!(handler2, traces)
   # GenArrow.write!(ctx, traces)
   # `GenArrow` keeps track of each trace using a UUID.
 
