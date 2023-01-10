@@ -1,18 +1,13 @@
 using UUIDs
 using TOML
 using Dates
-using FilePathsBase
 using Distributed
 
 #####
 ##### exports
-###
+#####
 
 export activate, write!, get_serializable_args, get_remote_channel
-
-#####
-##### Serialization
-#####
 
 const CONTEXT_NAME = "Context.toml"
 
@@ -29,10 +24,10 @@ const CONTEXT_NAME = "Context.toml"
 # ArrowTypes.fromarrow(::Type{Nothing}, ::Missing) = nothing
 
 
+
 struct Handler
   dir::AbstractPath
   name::String
-  df_buffer::DataFrame
   # lock::
 end
 
@@ -108,7 +103,7 @@ end
 
 function create_handler!(ctx::SerializationContext, name::String)
   handler_name = FilePathsBase.join(ctx.dir, name)
-  handler = Handler(handler_name, name, DataFrame());
+  handler = Handler(handler_name, name);
   if !FilePathsBase.exists(handler_name)
     mkdir(handler_name);
   else
@@ -126,15 +121,6 @@ function create_handler!(ctx::SerializationContext, name::String)
   ctx.handlers[name] = handler
   # release (ctx lock)
   return handler
-end
-
-function write!(handler::Handler, traces::Vector{<:Gen.Trace}; user_provided_metadata...)
-  arrow_file = FilePathsBase.join(handler.dir , "$(uuid4())")
-  mkpath(arrow_file)
-  save(arrow_file, traces, handler.df_buffer; user_provided_metadata);
-  # string_dir = string(arrow_file)
-  # push!(ctx, (; path=string_dir, user_provided_metadata...))
-  return arrow_file
 end
 
 # function write!(ctx::SerializationContext, traces::Vector{<:Gen.Trace}; user_provided_metadata...)

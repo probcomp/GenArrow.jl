@@ -4,6 +4,7 @@ using ArrowTypes
 using Gen
 using Tables
 using DataFrames
+using FilePathsBase
 using Serialization
 
 include("GenTable.jl")
