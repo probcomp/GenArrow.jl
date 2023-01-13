@@ -41,7 +41,7 @@ activate(Path("./sample")) do ctx
   # GenArrow.write!(handler, traces)
   # GenArrow.write!(handler2, traces)
   # GenArrow.write!(handler, tr)
-  GenArrow.write!(handler, tr, Path("what"))
+  GenArrow.write!(handler, tr, "what")
   # GenArrow.write!(ctx, traces)
   # `GenArrow` keeps track of each trace using a UUID.
 

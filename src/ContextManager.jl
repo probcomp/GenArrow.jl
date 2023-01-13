@@ -39,7 +39,7 @@ mutable struct SerializationContext
   uuid::UUID
   timestamp::Float64
   datetime::String
-  handlers::Dict{String, Handler}
+  handlers::Dict{String,Handler}
   write::Vector
   write_channel::RemoteChannel
 end
@@ -52,13 +52,13 @@ end
 Creates serialization context at directory dir
 """
 function activate(fn::Function, dir::AbstractPath)
-  mkpath(dir) 
+  mkpath(dir)
   @info "(GenArrow) Activating serialization session context in $(dir)"
   ctx = activate(dir)
   # create header file to organize context
 
   fn(ctx) # Pass context which provides functions to create handlers
-  
+
   ####
   # 1. Clean up file handlers
   # 2. Make sure all directories are referenced in manifest?
@@ -69,7 +69,7 @@ function activate(fn::Function, dir::AbstractPath)
   # ctx.session["paths"] = string(paths_file)
   # channel_collection = []
   # while isready(ctx.write_channel)
-    # push!(channel_collection, take!(ctx.write_channel))
+  # push!(channel_collection, take!(ctx.write_channel))
   # end
   # flat = collect(Iterators.flatten((ctx.write, channel_collection))) # Add back later
 
@@ -78,7 +78,7 @@ function activate(fn::Function, dir::AbstractPath)
 
   # Write out to the TraceManifest.toml manifest.
   # open(manifest_path, "w") do io
-    # TOML.print(io, ctx.manifest; sorted=true)
+  # TOML.print(io, ctx.manifest; sorted=true)
   # end
 
   return ctx
@@ -90,7 +90,7 @@ function activate(dir::AbstractPath)
   datetime = Dates.format(dt_now, "yyyy-mm-dd HH:MM:SS")
   u4 = uuid4()
   u5 = uuid5(u4, repr(now))
-  handlers = Dict{String, Handler}()
+  handlers = Dict{String,Handler}()
   header = FilePathsBase.join(dir, CONTEXT_NAME)
 
   if !FilePathsBase.exists(header)
@@ -103,9 +103,9 @@ end
 
 function create_handler!(ctx::SerializationContext, name::String)
   handler_name = FilePathsBase.join(ctx.dir, name)
-  handler = Handler(handler_name, name);
+  handler = Handler(handler_name, name)
   if !FilePathsBase.exists(handler_name)
-    mkdir(handler_name);
+    mkdir(handler_name)
   else
     # Throw error indicating handler exists
   end
@@ -114,7 +114,7 @@ function create_handler!(ctx::SerializationContext, name::String)
   context_toml[name] = "info"
   # #   session = Dict{String,Any}("timestamp" => datetime) # Consider separating by run of project?
   # #   d["$(repr(length(d) + 1))"] = session
-  open(ctx.header, "w") do io 
+  open(ctx.header, "w") do io
     TOML.print(io, context_toml)
   end
 
