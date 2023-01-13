@@ -1,4 +1,5 @@
 using Gen
+using LinearAlgebra
 
 @gen function gen_1(N)
   mu = zeros(5)
