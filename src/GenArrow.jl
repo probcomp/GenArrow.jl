@@ -1,4 +1,5 @@
 module GenArrow
+
 using Arrow
 using ArrowTypes
 using Gen
@@ -7,8 +8,8 @@ using DataFrames
 using FilePathsBase
 using Serialization
 
-include("GenTable.jl")
-include("AddressTrie.jl")
-include("ContextManager.jl")
-include("Serialize.jl")
+include("context_manager.jl")
+include("partial_trace.jl")
+include("serialize.jl")
+
 end
