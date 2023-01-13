@@ -14,17 +14,6 @@ const CONTEXT_NAME = "Context.toml"
 # TODO: possible to make this threadsafe?
 # TODO: allow writes to push to a channel.
 
-# Consider making the user write this?
-# ArrowTypes.ArrowKind(::Type{Nothing}) = ArrowTypes.NullKind()
-# ArrowTypes.ArrowType(::Type{Nothing}) = Missing
-# ArrowTypes.toarrow(::Nothing) = missing
-# const NOTHING = Symbol("JuliaLang.Nothing")
-# ArrowTypes.arrowname(::Type{Nothing}) = NOTHING
-# ArrowTypes.JuliaType(::Val{NOTHING}) = Nothing
-# ArrowTypes.fromarrow(::Type{Nothing}, ::Missing) = nothing
-
-
-
 struct Handler
   dir::AbstractPath
   name::String

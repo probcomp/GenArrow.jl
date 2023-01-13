@@ -1,10 +1,4 @@
 #####
-##### Address Trie
-#####
-
-AddressIndexTrie = Gen.Trie{Any,Int}
-
-#####
 ##### Covering choice map
 #####
 
@@ -17,6 +11,9 @@ struct PartialTrace <: Gen.Trace
   args::Arrow.Table
   retvals::Arrow.Table
   choices::Arrow.Table
+end
+
+function get_choices(trace::PartialTrace)
 end
 
 #####
