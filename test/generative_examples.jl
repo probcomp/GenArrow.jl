@@ -8,3 +8,7 @@ using LinearAlgebra
     {:r => k} ~ mvnormal(mu, cov)
   end
 end
+
+@gen function gen_2(branch)
+
+end
