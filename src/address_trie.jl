@@ -14,7 +14,7 @@ end
 ##### GFI methods for TraceCollection
 #####
 
-get_gen_fn(tr::TraceCollection) = throw("Not supported for TraceCollection.")
+get_gen_fn(_::TraceCollection) = throw("Not supported for TraceCollection.")
 
 function Gen.get_args(tr::TraceCollection)
   return tr.args
@@ -61,7 +61,7 @@ function functor!(fn::Function, choices::ChoiceMap)
   for (key, value) in get_values_shallow(choices)
     choices.leaf_nodes[key] = fn(value)
   end
-  for (key, node) in get_submaps_shallow(choices)
+  for (_, node) in get_submaps_shallow(choices)
     functor!(fn, node)
   end
 end
@@ -106,7 +106,7 @@ function accumulate!(broadcast_axis_length::Int, choices::DynamicChoiceMap, choi
     end
   end
 
-  for (key, value) in get_values_shallow(choices)
+  for (_, value) in get_values_shallow(choices)
     if length(value) == broadcast_axis_length
       push!(value, missing)
     end
@@ -120,7 +120,6 @@ function accumulate!(broadcast_axis_length::Int, choices::DynamicChoiceMap, choi
     if !haskey(choices.internal_nodes, key)
       new_collection = lift(node)
       prepend_missing!(broadcast_axis_length, new_collection)
-      choices.internal_nodes[key] = chm
     else
       accumulate!(choices.internal_nodes[key], node)
     end
@@ -144,9 +143,6 @@ function accumulate!(tr1::TraceCollection, tr2::Gen.Trace)
   choices_2 = get_choices(tr2)
   accumulate!(tr1.broadcast_axis_length, choices_1, choices_2)
   return TraceCollection(
-    tr1.args,
-    tr1.retval,
-    choices_1,
-    tr1.broadcast_axis_length + 1
+    tr1.args, tr1.retval, choices_1, tr1.broadcast_axis_length + 1
   )
 end
