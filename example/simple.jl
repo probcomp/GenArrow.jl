@@ -53,6 +53,7 @@ end
 # to perform analysis on the traces we sampled from our models or inference
 # algorithms.
 trace_path = Path("./sample/norm/what")
-trace = GenArrow.deserialize(model, trace_path)
+trace, weight = GenArrow.deserialize(model, trace_path)
 display(trace)
+println("Weight ", weight)
 end # module
