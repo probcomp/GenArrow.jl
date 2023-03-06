@@ -11,4 +11,5 @@ include("GenTable.jl")
 include("AddressTrie.jl")
 include("ContextManager.jl")
 include("Serialize.jl")
+include("interface.jl")
 end

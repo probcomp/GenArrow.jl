@@ -87,7 +87,6 @@ function traverse!(chm::Gen.ChoiceMap, row, addrs_trie::AddressTree, addrs_dict:
             addrs_trie[addr] = count
         end
         count += 1
-
     end
 
     for (k, subchm) in get_submaps_shallow(chm)
@@ -122,11 +121,11 @@ end
 # TODO: Move to Serialize.jl
 function reconstruct_trace(gen_fn, gentable::GenTable, index::Int) # TODO: Slow. Uses strings as symbols
     df = DataFrame(gentable.choice_table)[index, :]
-    columns = names(df)
+    columns = [eval(Meta.quot(addr)) for addr in propertynames(df)]
     mappings = []
     for col in columns
         if !isequal(df[col], missing)
-            push!(mappings, (eval(Meta.parse(col)), df[col]))
+            push!(mappings, (col, df[col]))
         end
     end
     args = DataFrame(gentable.metadata_table)[index, 1]
@@ -135,28 +134,31 @@ function reconstruct_trace(gen_fn, gentable::GenTable, index::Int) # TODO: Slow.
 end
 
 function reconstruct_trace(gen_fn, choice_map_table::Arrow.Table, metadata_table)
+
     df = DataFrame(choice_map_table)[1, :]
-    columns = names(df)
+    DataAPI.colmetadata(df, :x, "what", "what")
+    print(df)
+
+    columns = [eval(Meta.quot(addr)) for addr in propertynames(df)]
+
     mappings = []
-    for col in columns
-        if !isequal(df[col], missing)
-            push!(mappings, (eval(Meta.parse(col)), df[col]))
+    for (addr, name) in zip(columns, names(df))
+        if !isequal(df[name], missing)
+            println(typeof(addr), addr, "=> ", df[name])
+            push!(mappings, (addr, df[name]))
         end
     end
     args = DataFrame(metadata_table)[1, 1]
     chm = choicemap(mappings...)
-    println(args)
     Gen.generate(gen_fn, args, chm)
 end
 
 """
 Minimal convenience function to read one trace
 """
-function deserialize(gen_fn, filename::AbstractPath)
-    choice_map_path = string(FilePathsBase.join(filename, "choices.arrow"))
-    metadata_path = string(FilePathsBase.join(filename, "metadata.arrow"))
-    # addrs_trie_path = string(FilePathsBase.join(filename, "addrs_trie.jls"))
-    # addrs_dict_path = string(FilePathsBase.join(filename, "addrs_dict.jls"))
+function deserialize(gen_fn, tr_dir::String)
+    choice_map_path = tr_dir * "/choices.arrow"
+    metadata_path = tr_dir * "/metadata.arrow"
 
     choice_map_table = Arrow.Table(choice_map_path)
     # addrs_trie = Serialization.deserialize(addrs_trie_path)
