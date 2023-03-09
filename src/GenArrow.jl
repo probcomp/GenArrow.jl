@@ -13,4 +13,5 @@ include("ContextManager.jl")
 include("Serialize.jl")
 include("./serialize/DynamicDSL.jl")
 include("./serialize/Map.jl")
+include("./serialize/deserialize.jl")
 end
