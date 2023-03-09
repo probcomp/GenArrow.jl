@@ -145,7 +145,6 @@ function reconstruct_trace(gen_fn, choice_map_table::Arrow.Table, metadata_table
     end
     args = DataFrame(metadata_table)[1, 1]
     chm = choicemap(mappings...)
-    println(args)
     Gen.generate(gen_fn, args, chm)
 end
 
