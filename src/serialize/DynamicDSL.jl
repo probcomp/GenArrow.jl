@@ -1,18 +1,27 @@
 import .Serialization
 using Gen
 
+# HEADER
+# [attributes] [# of leaf] [is_leaf, size, address, non-trace] [internal, size, address, non-trace] [# internal] [is_leaf, address, trace] [internal, addres, trace]
+
 function serialize_trie(io, trie::Trie{K,V}) where {K,V}
     write(io, length(trie.leaf_nodes))
     for (key, record) in trie.leaf_nodes
-        # println(key, " ", record)
+        println(key, " ", record)
         Serialization.serialize(io, key)
         is_trace = isa(record.subtrace_or_retval, Trace)
         write(io, is_trace)
 
         if is_trace
             tr = record.subtrace_or_retval
-            println("Found trace: ", typeof(tr), " ", key)
+            ptr = io.ptr
+            write(io, 0) # Blank for trace size
             serialize(io, tr)
+            io.ptr = ptr
+            write(io, io.size - ptr)
+            io.ptr = ptr
+            println(read(io, Int))
+            seekend(io)
         else
             # TODO: De-swizzle record
             Serialization.serialize(io, record)

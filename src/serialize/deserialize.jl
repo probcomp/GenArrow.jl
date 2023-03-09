@@ -1,7 +1,6 @@
 using Gen
 import .Serialization
 
-
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IOBuffer # Change to blob
