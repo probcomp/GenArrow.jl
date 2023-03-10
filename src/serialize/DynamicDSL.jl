@@ -1,65 +1,99 @@
 import .Serialization
 using Gen
+using Logging
+
 
 # HEADER
 # [attributes] [# of leaf] [is_leaf, size, address, non-trace] [internal, size, address, non-trace] [# internal] [is_leaf, address, trace] [internal, addres, trace]
 
-function serialize_trie(io, trie::Trie{K,V}) where {K,V}
+function serialize_address_map(io, trie::Trie{K,V}) where {K,V}
+    # println("Leaf nodes: ", keys(trie.leaf_nodes))
+    # println("Internal addr: ", keys(trie.internal_nodes))
     write(io, length(trie.leaf_nodes))
-    for (key, record) in trie.leaf_nodes
-        println(key, " ", record)
-        Serialization.serialize(io, key)
+
+    map = Dict{Any, Int64}()
+
+    # Leaf address map
+    for (addr, record) in trie.leaf_nodes
+        # println(addr, " ", record)
         is_trace = isa(record.subtrace_or_retval, Trace)
+        Serialization.serialize(io, addr)
+        map[addr] = io.ptr
+        write(io, 0) # Record ptr
+        write(io, 0) # Size of record
         write(io, is_trace)
+    end
+
+    write(io, length(trie.internal_nodes))
+    for (addr, subtrie) in trie.internal_nodes
+        # println("Addr: ", addr)
+        Serialization.serialize(io, addr)
+
+        # TODO: Add assertion here. If DynamicDSL invariant holds, then maybe not necessary?
+        
+        map[addr] = io.ptr
+        write(io, 0) # Trie ptr 
+        write(io,0) # Size of trie
+    end
+    @debug "MAP " map _module=""
+    map
+end
+
+function serialize_records(io, trie::Trie{K,V}, map::Dict{Any, Int64}) where {K,V}
+    # Choices/Traces
+    for (addr, record) in trie.leaf_nodes
+        # println(addr, " ", record)
+        is_trace = isa(record.subtrace_or_retval, Trace)
+        ptr = io.ptr
+        hmac = rand(1:100000)
+        @debug "LEAF" addr is_trace record_in_map=map[addr] record _module="" hmac
 
         if is_trace
             tr = record.subtrace_or_retval
-            ptr = io.ptr
-            write(io, 0) # Blank for trace size
             serialize(io, tr)
-            io.ptr = ptr
-            write(io, io.size - ptr)
-            io.ptr = ptr
-            println(read(io, Int))
-            seekend(io)
         else
             # TODO: De-swizzle record
             Serialization.serialize(io, record)
         end
+
+        # TODO: Check if nothing was serialized?
+        io.ptr = map[addr]
+        write(io, ptr)
+        write(io, io.size - ptr)
+        @debug "LEAF" addr record_ptr=ptr length=(io.size-ptr) hmac _module=""
+        seekend(io)
     end
 
-    write(io, length(trie.internal_nodes))
-    # println("Internal nodes")
-    for (key, subtrie) in trie.internal_nodes
-        # println("Key: ", key, " subtrie: ", subtrie)
-        Serialization.serialize(io, key)
+    for (addr, subtrie) in trie.internal_nodes
+        @debug "INTERNAL" addr
+        Serialization.serialize(io, addr)
         serialize_trie(io, subtrie)
     end
 end
 
+function serialize_trie(io, trie::Trie{K,V}) where {K,V}
+    # HEADER - | leaf count | leaf map | leaves | internal count | addr map | tries | 
+    addr_map = serialize_address_map(io, trie)
+    serialize_records(io, trie, addr_map)
+end
+
 function serialize(io, tr::Gen.DynamicDSLTrace{T}) where {T} 
-    # HEADER 
-    # isempty, score, noise, args, retval, [trie]
-    # [trie] is present if isempty is false
+    # HEADER - type, isempty, score, noise, args, retval, [trie]
     
     Serialization.serialize(io, typeof(tr))
-    # Serialization.serialize(io, tr.trie) # Not clear how to remove this
     write(io, tr.isempty)
     write(io, tr.score)
     write(io, tr.noise)
     Serialization.serialize(io, tr.args)
     Serialization.serialize(io, tr.retval)
-    # println("SERIALIZATION")
-    # println("trie: ", tr.trie)
-    # println("isempty: ", tr.isempty)
-    # println("score: ", tr.score)
-    # println("noise: ", tr.noise)
-    # println("args: ", tr.args)
-    # println("retval: ", tr.retval)
-    # println("END")
+    @debug "HEADER" type=typeof(tr) tr.isempty tr.score tr.noise tr.args tr.retval _module=""
+
     if !tr.isempty
         serialize_trie(io, tr.trie)
     end
+
+    @debug "END" _module=""
+    return nothing
 end
 
 function deserialize_trie(io)
