@@ -43,31 +43,54 @@ get_internal_nodes(trie::Ptrie) = trie.internal_nodes
 #     trie.internal_nodes[addr]
 # end
 
-# function get_internal_node(trie::Trie, addr::Pair)
-#     (first, rest) = addr
+function get_internal_node(trie::Trie, addr::Pair)
+    (first, rest) = addr
 #     if haskey(trie.internal_nodes, first)
 #         get_internal_node(trie.internal_nodes[first], rest)
 #     else
 #         throw(KeyError(trie, addr))
 #     end
-# end
+end
+
+function set_internal_node!(trie::Ptrie{K}, addr, ptr, length) where {K}
+    if addr in keys(trie.internal_nodes)
+        throw("Hmm. Sussy Bakka???")
+    else
+        node = Ptrie{Any}(ptr, length)
+        trie.internal_nodes[addr] = node
+    end
+end
 
 function set_internal_node!(trie::Ptrie{K}, addr, new_node::Ptrie{K}) where {K}
     if !isempty(new_node)
-        trie.internal_nodes[addr] = new_node
+        if addr in keys(trie.internal_nodes)
+            throw("HMM. Sussy Bakka")
+        else
+            trie.internal_nodes[addr] = new_node
+        end
     end
 end
 
 function set_internal_node!(trie::Ptrie{K}, addr::Pair, new_node::Ptrie{K}) where {K}
+    @debug "SET_INTERNAL" addr new_node.ptr new_node.length
     (first, rest) = addr
-    # if haskey(trie.internal_nodes, first)
-    #     node = trie.internal_nodes[first]
-    # else
-    #     node = Ptrie{K}()
-    #     trie.internal_nodes[first] = node
-    # end
-    # Skip to LCA. Then start reading io?
-    # set_internal_node!(node, rest, new_node)
+    if hashkey(trie.internal_nodes, first)
+        node = trie.internal_nodes[first]
+    else
+        throw("Hmm. Sussy Bakka")
+    end
+    set_internal_node!(node, rest, new_node)
+end
+
+function set_internal_node!(trie::Ptrie{K}, addr::Pair, ptr::Int64, length::Int64) where {K}
+    @debug "SET_INTERNAL" addr ptr length
+    (first, rest) = addr
+    if hashkey(trie.internal_nodes, first)
+        node = trie.internal_nodes[first]
+    else
+        node = Ptrie{K}(ptr, length)
+    end
+    set_internal_node!(node, rest, new_node)
 end
 
 # function delete_internal_node!(trie::Trie, addr)

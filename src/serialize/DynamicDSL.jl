@@ -5,13 +5,12 @@ import .Serialization
 # [attributes] [# of leaf] [is_leaf, size, address, non-trace] [internal, size, address, non-trace] [# internal] [is_leaf, address, trace] [internal, addres, trace]
 
 function serialize_address_map(io, trie::Trie{K,V}) where {K,V}
-    # println("Leaf nodes: ", keys(trie.leaf_nodes))
-    # println("Internal addr: ", keys(trie.internal_nodes))
-    write(io, length(trie.leaf_nodes))
 
     map = Dict{Any, Int64}()
 
     # Leaf address map
+    leaf_map_ptr = io.ptr
+    write(io, length(trie.leaf_nodes))
     for (addr, record) in trie.leaf_nodes
         # println(addr, " ", record)
         is_trace = isa(record.subtrace_or_retval, Trace)
@@ -22,19 +21,19 @@ function serialize_address_map(io, trie::Trie{K,V}) where {K,V}
         write(io, is_trace)
     end
 
+    internal_map_ptr = io.ptr
     write(io, length(trie.internal_nodes))
     for (addr, subtrie) in trie.internal_nodes
         # println("Addr: ", addr)
         Serialization.serialize(io, addr)
 
         # TODO: Add assertion here. If DynamicDSL invariant holds, then maybe not necessary?
-        
         map[addr] = io.ptr
         write(io, 0) # Trie ptr 
         write(io,0) # Size of trie
     end
-    @debug "MAP " map _module=""
-    map
+    @debug "MAP" map leaf_map_ptr internal_map_ptr _module=""
+    map, leaf_map_ptr, internal_map_ptr
 end
 
 function serialize_records(io, trie::Trie{K,V}, map::Dict{Any, Int64}) where {K,V}
@@ -64,9 +63,8 @@ function serialize_records(io, trie::Trie{K,V}, map::Dict{Any, Int64}) where {K,
 
     for (addr, subtrie) in trie.internal_nodes
         hmac = rand(-10000:-1)
-        @debug "INTERNAL" addr hmac
         ptr = io.ptr
-        Serialization.serialize(io, addr)
+        @debug "INTERNAL" addr hmac trie=ptr
         serialize_trie(io, subtrie)
         io.ptr = map[addr]
         write(io, ptr)
@@ -78,7 +76,16 @@ end
 
 function serialize_trie(io, trie::Trie{K,V}) where {K,V}
     # HEADER - | leaf count | leaf map | leaves | internal count | addr map | tries | 
-    addr_map = serialize_address_map(io, trie)
+    ptr = io.ptr
+    write(io, 0) # ptr to leaf map
+    write(io, 0) # ptr to internal map
+    @debug "TRIE" start=ptr
+    addr_map, leaf_map_ptr, internal_map_ptr = serialize_address_map(io, trie)
+    @debug "MAP PTRS" leaf_map_ptr internal_map_ptr
+    io.ptr = ptr
+    write(io, leaf_map_ptr)
+    write(io, internal_map_ptr)
+    seekend(io)
     serialize_records(io, trie, addr_map)
 end
 
@@ -100,84 +107,9 @@ function serialize(io, tr::Gen.DynamicDSLTrace{T}) where {T}
     @debug "END" _module=""
     return nothing
 end
-# macro serialize_with_io(tr_type)
-#     println(typeof(tr_type), " ", tr_type)
-#     quote
-#         function serialize(tr::$(tr_type))
-#             println("Sup")
-#         end 
-#     end
-# end
 
-# @serialize_with_io(Gen.DynamicDSLTrace{T})
 function serialize(tr::Gen.DynamicDSLTrace{T}) where {T}
     io = IOBuffer()
     serialize(io,tr)
     io
 end
-
-# end
-
-# function deserialize_trie(io)
-#     leaf_count = read(io, Int64)
-#     println("leaf count: ", leaf_count)
-#     # Leaf nodes
-#     trie = Trie{Any, Gen.ChoiceOrCallRecord}()
-#     for i=1:leaf_count
-#         key = Serialization.deserialize(io)
-#         is_trace = read(io, Bool)
-#         # println("Key: ", key)
-#         # println("is trace: ", is_trace)
-#         record = nothing
-#         if is_trace
-#             type = Serialization.deserialize(io)
-#             # println("Subtrace type: ", type)
-#             GenArrow.deserialize(io, type)
-#         else
-#             record = Serialization.deserialize(io)
-#         end
-#         trie.leaf_nodes[key] = record
-#     end
-
-#     # Internal nodes
-#     internal_count = read(io, Int64)
-#     # println("Deserialize Internal Nodes: ", internal_count)
-#     for i=1:internal_count
-#         key = Serialization.deserialize(io)
-#         subtrie = deserialize_trie(io)
-#         trie.internal_nodes[key] = subtrie
-#         # How to map this subtrie into key
-#     end
-#     return trie
-# end
-
-# function deserialize(io, ::Type{Gen.DynamicDSLTrace{U}}) where {U}
-#     isempty = read(io, Bool)
-#     score = read(io, Float64)
-#     noise = read(io, Float64)
-#     args = Serialization.deserialize(io)
-#     retval = Serialization.deserialize(io)
-#     println("Deserialize")
-#     println("isempty: ", isempty)
-#     println("score: ", score)
-#     println("noise: ", noise)
-#     println("args: ", args)
-#     println("retval: ", retval)
-
-#     trie = deserialize_trie(io)
-#     println("END")
-
-#     tr = Gen.DynamicDSLTrace{U}(gen_fn, args) # Problem because gen_fn is needed?
-#     tr.trie = trie
-#     tr.isempty = isempty
-#     tr.score = score
-#     tr.noise = noise
-#     tr.retval = retval
-#     return tr
-# end
-
-# function deserialize(io)
-#     trace_type = Serialization.deserialize(io)
-#     println("Trace type: ", trace_type)
-#     GenArrow.deserialize(io, trace_type)
-# end

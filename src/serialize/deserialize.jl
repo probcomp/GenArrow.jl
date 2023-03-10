@@ -4,17 +4,42 @@ mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IOBuffer # Change to blob
     # leaf_map::Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}
+    # internal_map::Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}
     ptr_trie::Ptrie{Any} # Need this to support internal nodes
-    internal_map::Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
 
+# assumes io is at position of the start of internal map
+function _deserialize_internal_addresses(io, ptr_trie::Ptrie{Any}) 
+    internal_count = read(io, Int)
+    for i=1:internal_count
+        addr = Serialization.deserialize(io)
+        trie_ptr = read(io, Int)
+        trie_size = read(io,Int)
+        @debug "INTERNAL" addr trie_ptr trie_size  
+
+        set_internal_node!(ptr_trie, addr, trie_ptr, trie_size)
+
+        restore_ptr = io.ptr
+        io.ptr = trie_ptr # Next trie
+        next_leaf_map_ptr = read(io, Int)
+        next_addr_map_ptr = read(io, Int)
+        io.ptr = next_addr_map_ptr
+        @debug "JUMP" trie_ptr next_leaf_map_ptr next_addr_map_ptr
+        _deserialize_internal_addresses(io, ptr_trie)
+        io.ptr = restore_ptr
+    end
+end
+
 function _deserialize_maps(io)
     # leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
-    internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
+    # internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
     ptr_trie = Ptrie{Any}(-1, -1)
 
+    leaf_map_ptr = read(io, Int)
+    internal_map_ptr = read(io, Int)
+    @debug "[LEAF MAP] [INTERNAL MAP PTR]" leaf_map_ptr internal_map_ptr
     leaf_count = read(io, Int)
     for i=1:leaf_count
         addr = Serialization.deserialize(io)
@@ -26,18 +51,10 @@ function _deserialize_maps(io)
         @debug "LEAF" addr record_ptr size=record_size is_trace
     end
 
-    internal_count = read(io, Int)
-    for i=1:internal_count
-        addr = Serialization.deserialize(io)
-        trie_ptr = read(io, Int)
-        trie_size = read(io,Int)
-        internal_map[addr] = (ptr=trie_ptr, size=trie_size)
-        set_internal_node!(ptr_trie, addr, Ptrie{Any}(trie_ptr, trie_size))
-        @debug "INTERNAL" addr trie_size
-    end
-    @debug "MAP" ptr_trie.leaf_nodes internal_map ptr_trie _module=""
+    _deserialize_internal_addresses(io, ptr_trie)
+    @debug "MAP" ptr_trie.leaf_nodes ptr_trie.internal_nodes ptr_trie _module=""
 
-    ptr_trie, internal_map
+    ptr_trie
 end
 
 function GFDeserializeState(gen_fn, io, params)
@@ -49,7 +66,7 @@ function GFDeserializeState(gen_fn, io, params)
     retval = Serialization.deserialize(io)
 
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval gen_fn _module=""
-    ptr_trie, internal_map = _deserialize_maps(io)
+    ptr_trie = _deserialize_maps(io)
     if isempty
         throw("Need to figure this out")
     else
@@ -64,7 +81,7 @@ function GFDeserializeState(gen_fn, io, params)
     # trace.score = score # add_call! and add_choice! double count
     trace.noise = noise
     trace.retval = retval
-    GFDeserializeState(trace, io, ptr_trie, internal_map, Gen.AddressVisitor(), params)
+    GFDeserializeState(trace, io, ptr_trie, Gen.AddressVisitor(), params)
 end
 
 function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args, key) where {T}
@@ -80,10 +97,10 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
         state.io.ptr = ptr
         record = Serialization.deserialize(state.io)
         @debug "CHOICE" ptr size is_trace record
-    elseif key in keys(state.internal_map)
+    elseif key in keys(state.ptr_trie.internal_nodes)
         throw("Not implemented")
     else
-        @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.internal_map _module=""
+        @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.ptr_trie.internal_nodes _module=""
         throw("$(key) Key not in leaf or internal maps")
     end
 
