@@ -92,12 +92,12 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
 
     # check if leaf_map or internal_map contains key
 
-    if key in keys(state.ptr_trie.leaf_nodes)
+    if key in state.ptr_trie.leaf_nodes
         ptr, size ,is_trace = state.ptr_trie.leaf_nodes[key]
         state.io.ptr = ptr
         record = Serialization.deserialize(state.io)
         @debug "CHOICE" ptr size is_trace record
-    elseif key in keys(state.ptr_trie.internal_nodes)
+    elseif key in state.ptr_trie
         throw("Not implemented")
     else
         @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.ptr_trie.internal_nodes _module=""
@@ -137,11 +137,11 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
 
     # check for constraints at this key
 
-    if key in keys(state.ptr_trie.leaf_nodes)
+    if key in state.ptr_trie.leaf_nodes
         ptr, size ,is_trace = state.ptr_trie.leaf_nodes[key]
         state.io.ptr = ptr
         @debug "SUBTRACE" ptr size is_trace
-    elseif key in keys(state.internal_map)
+    elseif key in state.ptr_trie
         throw("Not implemented")
     else
         @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.internal_map _module=""

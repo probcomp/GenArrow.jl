@@ -5,6 +5,10 @@ using FilePathsBase
 using Test
 
 include("standard.jl")
+include("trie.jl")
 
 
-@test test_1()
+
+@test test_trie_1()
+@test test_trie_2()
+@test test_trie_3()

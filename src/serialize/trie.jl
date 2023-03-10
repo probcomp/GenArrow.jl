@@ -3,7 +3,7 @@
 ##################
 
 RECORD_INFO = NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Bool}}
-struct Ptrie{K}
+mutable struct Ptrie{K}
     ptr::Int64
     length::Int64
     leaf_nodes::Dict{K, RECORD_INFO} # Invariant: keys are not shared! TODO: Check for this
@@ -16,7 +16,7 @@ Ptrie{K}(ptr::Int64, length::Int64) where {K} = Ptrie(ptr, length, Dict{K,RECORD
 # Base.println(trie::Trie) = JSON.print(trie, 4)
 
 # invariant: all internal nodes are nonempty
-Base.isempty(trie::Ptrie) = isempty(trie.leaf_nodes) && isempty(trie.internal_nodes)
+Base.isempty(trie::Ptrie) = (trie.length == -1 || trie.ptr == -1) && hisempty(trie.leaf_nodes) && isempty(trie.internal_nodes)
 get_leaf_nodes(trie::Ptrie) = trie.leaf_nodes
 get_internal_nodes(trie::Ptrie) = trie.internal_nodes
 
@@ -52,45 +52,37 @@ function get_internal_node(trie::Trie, addr::Pair)
 #     end
 end
 
-function set_internal_node!(trie::Ptrie{K}, addr, ptr, length) where {K}
-    if addr in keys(trie.internal_nodes)
-        throw("Hmm. Sussy Bakka???")
-    else
-        node = Ptrie{Any}(ptr, length)
-        trie.internal_nodes[addr] = node
-    end
-end
 
 function set_internal_node!(trie::Ptrie{K}, addr, new_node::Ptrie{K}) where {K}
-    if !isempty(new_node)
-        if addr in keys(trie.internal_nodes)
-            throw("HMM. Sussy Bakka")
-        else
-            trie.internal_nodes[addr] = new_node
-        end
+    @debug "SET_INTERNAL" addr ptr=new_node.ptr length=new_node.length
+    if haskey(trie.internal_nodes, addr)
+        @warn "Replacing" addr
+        trie.internal_nodes[addr].ptr = new_node.ptr
+        trie.internal_nodes[addr].length = new_node.length
+    else
+        trie.internal_nodes[addr] = new_node
     end
 end
 
 function set_internal_node!(trie::Ptrie{K}, addr::Pair, new_node::Ptrie{K}) where {K}
-    @debug "SET_INTERNAL" addr new_node.ptr new_node.length
+    @debug "SET_INTERNAL" addr ptr=new_node.ptr length=new_node.length
     (first, rest) = addr
-    if hashkey(trie.internal_nodes, first)
+    if haskey(trie.internal_nodes, first)
         node = trie.internal_nodes[first]
     else
-        throw("Hmm. Sussy Bakka")
+        node = Ptrie{K}(-1, -1)
+        trie.internal_nodes[first] = node
     end
     set_internal_node!(node, rest, new_node)
 end
 
-function set_internal_node!(trie::Ptrie{K}, addr::Pair, ptr::Int64, length::Int64) where {K}
-    @debug "SET_INTERNAL" addr ptr length
-    (first, rest) = addr
-    if hashkey(trie.internal_nodes, first)
-        node = trie.internal_nodes[first]
-    else
-        node = Ptrie{K}(ptr, length)
-    end
-    set_internal_node!(node, rest, new_node)
+set_internal_node!(trie::Ptrie{K}, addr::Pair, ptr::Int64, length::Int64) where {K} =  set_internal_node!(trie, addr, Ptrie{K}(ptr, length))
+
+set_internal_node!(trie::Ptrie{K}, addr, ptr, length) where {K} = set_internal_node!(trie, addr, Ptrie{K}(ptr, length))
+
+function ∈(addr::Pair, trie::Ptrie{K}) where {K}
+    @debug "IN"
+    return false
 end
 
 # function delete_internal_node!(trie::Trie, addr)
