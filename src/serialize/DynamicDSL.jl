@@ -95,67 +95,84 @@ function serialize(io, tr::Gen.DynamicDSLTrace{T}) where {T}
     @debug "END" _module=""
     return nothing
 end
+# macro serialize_with_io(tr_type)
+#     println(typeof(tr_type), " ", tr_type)
+#     quote
+#         function serialize(tr::$(tr_type))
+#             println("Sup")
+#         end 
+#     end
+# end
 
-function deserialize_trie(io)
-    leaf_count = read(io, Int64)
-    println("leaf count: ", leaf_count)
-    # Leaf nodes
-    trie = Trie{Any, Gen.ChoiceOrCallRecord}()
-    for i=1:leaf_count
-        key = Serialization.deserialize(io)
-        is_trace = read(io, Bool)
-        # println("Key: ", key)
-        # println("is trace: ", is_trace)
-        record = nothing
-        if is_trace
-            type = Serialization.deserialize(io)
-            # println("Subtrace type: ", type)
-            GenArrow.deserialize(io, type)
-        else
-            record = Serialization.deserialize(io)
-        end
-        trie.leaf_nodes[key] = record
-    end
-
-    # Internal nodes
-    internal_count = read(io, Int64)
-    # println("Deserialize Internal Nodes: ", internal_count)
-    for i=1:internal_count
-        key = Serialization.deserialize(io)
-        subtrie = deserialize_trie(io)
-        trie.internal_nodes[key] = subtrie
-        # How to map this subtrie into key
-    end
-    return trie
+# @serialize_with_io(Gen.DynamicDSLTrace{T})
+function serialize(tr::Gen.DynamicDSLTrace{T}) where {T}
+    io = IOBuffer()
+    serialize(io,tr)
+    io
 end
 
-function deserialize(io, ::Type{Gen.DynamicDSLTrace{U}}) where {U}
-    isempty = read(io, Bool)
-    score = read(io, Float64)
-    noise = read(io, Float64)
-    args = Serialization.deserialize(io)
-    retval = Serialization.deserialize(io)
-    println("Deserialize")
-    println("isempty: ", isempty)
-    println("score: ", score)
-    println("noise: ", noise)
-    println("args: ", args)
-    println("retval: ", retval)
+# end
 
-    trie = deserialize_trie(io)
-    println("END")
+# function deserialize_trie(io)
+#     leaf_count = read(io, Int64)
+#     println("leaf count: ", leaf_count)
+#     # Leaf nodes
+#     trie = Trie{Any, Gen.ChoiceOrCallRecord}()
+#     for i=1:leaf_count
+#         key = Serialization.deserialize(io)
+#         is_trace = read(io, Bool)
+#         # println("Key: ", key)
+#         # println("is trace: ", is_trace)
+#         record = nothing
+#         if is_trace
+#             type = Serialization.deserialize(io)
+#             # println("Subtrace type: ", type)
+#             GenArrow.deserialize(io, type)
+#         else
+#             record = Serialization.deserialize(io)
+#         end
+#         trie.leaf_nodes[key] = record
+#     end
 
-    tr = Gen.DynamicDSLTrace{U}(gen_fn, args) # Problem because gen_fn is needed?
-    tr.trie = trie
-    tr.isempty = isempty
-    tr.score = score
-    tr.noise = noise
-    tr.retval = retval
-    return tr
-end
+#     # Internal nodes
+#     internal_count = read(io, Int64)
+#     # println("Deserialize Internal Nodes: ", internal_count)
+#     for i=1:internal_count
+#         key = Serialization.deserialize(io)
+#         subtrie = deserialize_trie(io)
+#         trie.internal_nodes[key] = subtrie
+#         # How to map this subtrie into key
+#     end
+#     return trie
+# end
 
-function deserialize(io)
-    trace_type = Serialization.deserialize(io)
-    println("Trace type: ", trace_type)
-    GenArrow.deserialize(io, trace_type)
-end
+# function deserialize(io, ::Type{Gen.DynamicDSLTrace{U}}) where {U}
+#     isempty = read(io, Bool)
+#     score = read(io, Float64)
+#     noise = read(io, Float64)
+#     args = Serialization.deserialize(io)
+#     retval = Serialization.deserialize(io)
+#     println("Deserialize")
+#     println("isempty: ", isempty)
+#     println("score: ", score)
+#     println("noise: ", noise)
+#     println("args: ", args)
+#     println("retval: ", retval)
+
+#     trie = deserialize_trie(io)
+#     println("END")
+
+#     tr = Gen.DynamicDSLTrace{U}(gen_fn, args) # Problem because gen_fn is needed?
+#     tr.trie = trie
+#     tr.isempty = isempty
+#     tr.score = score
+#     tr.noise = noise
+#     tr.retval = retval
+#     return tr
+# end
+
+# function deserialize(io)
+#     trace_type = Serialization.deserialize(io)
+#     println("Trace type: ", trace_type)
+#     GenArrow.deserialize(io, trace_type)
+# end

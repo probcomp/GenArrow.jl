@@ -11,43 +11,6 @@ mutable struct GFDeserializeState
     params::Dict{Symbol,Any}
 end
 
-function _deserialize_trie(io)
-    temp_subtraces = Dict()
-    leaf_count = read(io, Int64)
-    println("leaf count: ", leaf_count)
-    # Leaf nodes
-    trie = Trie{Any, Gen.ChoiceOrCallRecord}()
-    for i=1:leaf_count
-        key = Serialization.deserialize(io)
-        is_trace = read(io, Bool)
-        println("Key: ", key)
-        println("is trace: ", is_trace)
-        record = nothing
-        if is_trace
-            # Blob: Record 
-            # println("Blob: ", temp_subtraces[key])
-            # TODO: Get blob size of subtrace. Grab?
-            # type = Serialization.deserialize(io)
-            # # println("Subtrace type: ", type)
-            # GenArrow._deserialize(io, type)
-        else
-            record = Serialization.deserialize(io)
-        end
-        trie.leaf_nodes[key] = record
-    end
-
-    # Internal nodes
-    internal_count = read(io, Int64)
-    # println("Deserialize Internal Nodes: ", internal_count)
-    for i=1:internal_count
-        key = Serialization.deserialize(io)
-        subtrie = deserialize_trie(io)
-        trie.internal_nodes[key] = subtrie
-        # How to map this subtrie into key
-    end
-    return trie
-end
-
 function _deserialize_maps(io)
     leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
     internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
@@ -95,7 +58,7 @@ function GFDeserializeState(gen_fn, io, params)
 
     trace = Gen.DynamicDSLTrace(gen_fn, args) 
     trace.isempty = isempty
-    trace.score = score
+    # trace.score = score # add_call! and add_choice! double count
     trace.noise = noise
     trace.retval = retval
     GFDeserializeState(trace, io, leaf_map, internal_map, Gen.AddressVisitor(), params)
@@ -103,7 +66,6 @@ end
 
 function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args, key) where {T}
     local retval::T
-    @debug "TRACEAT DIST" dist args key
 
     # check that key was not already visited, and mark it as visited
     Gen.visit!(state.visitor, key)
@@ -130,6 +92,7 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
 
     # intercept logpdf
     score = record.score
+    @debug "TRACEAT DIST" dist args key score retval
 
     # add to the trace
     Gen.add_choice!(state.trace, key, retval, score)
@@ -192,7 +155,7 @@ function _deserialize(gen_fn::Gen.DynamicDSLFunction, io::IOBuffer)
     state = GFDeserializeState(gen_fn, io, gen_fn.params)
     # Deserialize stuff including args and retval
     retval = Gen.exec(gen_fn, state, state.trace.args)
-    # set_retval!(state.trace, retval)
+    Gen.set_retval!(state.trace, retval)
     @debug "END" tr=get_choices(state.trace)
     state.trace
 end
