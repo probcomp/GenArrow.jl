@@ -10,28 +10,6 @@ using Serialization
 #     end
 # end
 
-# function test_1()
-#     tr_old, w_old = generate(model, ())
-#     activate(Path("./test/unit/dump")) do ctx
-#         handler = GenArrow.create_handler!(ctx, "dump")
-#         write!(handler, tr_old, "test_1")
-#     end
-#     tr_new, w_new = GenArrow.deserialize(model, "./test/unit/dump/dump/test_1")
-#     if (get_choices(tr_old) != get_choices(tr_new))
-#         display(get_choices(tr_old))
-#         display(get_choices(tr_new))
-#     end
-#     if (get_score(tr_old) != get_score(tr_new))
-#         throw()
-#     end
-#     if (get_args(tr_old) != get_args(tr_new))
-#         throw()
-#     end
-#     if (get_retval(tr_old) != get_retval(tr_old))
-#         throw()
-#     end
-# end
-
 @gen function model(n)
     x ~ bernoulli(0.5)
     y ~ submodel(n)
@@ -48,32 +26,36 @@ function write_to_file(fname, input)
         write(io, data)
     end
 end
+function basic_equality(tr1, tr2)
+    if (get_choices(tr1) != get_choices(tr2))
+        display(get_choices(tr1))
+        display(get_choices(tr))
+        return false
+    end
+    if (get_score(tr1) != get_score(tr2))
+        throw()
+        return false
+    end
+    if (get_args(tr1) != get_args(tr2))
+        throw()
+        return false
+    end
+    if (get_retval(tr1) != get_retval(tr2))
+        throw()
+        return false
+    end
+end
 
-function test_1()
+function test_leaves()
     io = IOBuffer()
     tr, weight = generate(model, (10,)) 
     io = GenArrow.serialize(tr)
 
     seekstart(io)
-    tr_new = GenArrow._deserialize(model, io)
-
-    if (get_choices(tr_new) != get_choices(tr))
-        display(get_choices(tr_new))
-        display(get_choices(tr))
-        return false
-    end
-    if (get_score(tr) != get_score(tr_new))
-        throw()
-        return false
-    end
-    if (get_args(tr) != get_args(tr_new))
-        throw()
-        return false
-    end
-    if (get_retval(tr) != get_retval(tr_new))
-        throw()
-        return false
-    end
-
+    tr_deserialized = GenArrow._deserialize(model, io)
+    basic_equality(tr, tr_deserialized)
     return true
+end
+
+function test_internal()
 end

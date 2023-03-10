@@ -1,26 +1,28 @@
-using Gen
 import .Serialization
-using Logging
 
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IOBuffer # Change to blob
-    leaf_map::Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}
+    # leaf_map::Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}
+    ptr_trie::Ptrie{Any} # Need this to support internal nodes
     internal_map::Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
 
 function _deserialize_maps(io)
-    leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
+    # leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
     internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
+    ptr_trie = Ptrie{Any}(-1, -1)
+
     leaf_count = read(io, Int)
     for i=1:leaf_count
         addr = Serialization.deserialize(io)
         record_ptr = read(io, Int)
         record_size = read(io, Int)
         is_trace = read(io, Bool)
-        leaf_map[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
+        # leaf_map[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
+        set_leaf_node!(ptr_trie, addr, (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace))
         @debug "LEAF" addr record_ptr size=record_size is_trace
     end
 
@@ -30,11 +32,12 @@ function _deserialize_maps(io)
         trie_ptr = read(io, Int)
         trie_size = read(io,Int)
         internal_map[addr] = (ptr=trie_ptr, size=trie_size)
-        @debug "INTERNAL" addr byte_size
+        set_internal_node!(ptr_trie, addr, Ptrie{Any}(trie_ptr, trie_size))
+        @debug "INTERNAL" addr trie_size
     end
-    @debug "MAP" leaf_map internal_map _module=""
+    @debug "MAP" ptr_trie.leaf_nodes internal_map ptr_trie _module=""
 
-    leaf_map, internal_map
+    ptr_trie, internal_map
 end
 
 function GFDeserializeState(gen_fn, io, params)
@@ -46,7 +49,7 @@ function GFDeserializeState(gen_fn, io, params)
     retval = Serialization.deserialize(io)
 
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval gen_fn _module=""
-    leaf_map, internal_map = _deserialize_maps(io)
+    ptr_trie, internal_map = _deserialize_maps(io)
     if isempty
         throw("Need to figure this out")
     else
@@ -61,7 +64,7 @@ function GFDeserializeState(gen_fn, io, params)
     # trace.score = score # add_call! and add_choice! double count
     trace.noise = noise
     trace.retval = retval
-    GFDeserializeState(trace, io, leaf_map, internal_map, Gen.AddressVisitor(), params)
+    GFDeserializeState(trace, io, ptr_trie, internal_map, Gen.AddressVisitor(), params)
 end
 
 function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args, key) where {T}
@@ -72,15 +75,16 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
 
     # check if leaf_map or internal_map contains key
 
-    if key in keys(state.leaf_map)
-        ptr, size ,is_trace = state.leaf_map[key]
+    if key in keys(state.ptr_trie.leaf_nodes)
+        ptr, size ,is_trace = state.ptr_trie.leaf_nodes[key]
         state.io.ptr = ptr
         record = Serialization.deserialize(state.io)
         @debug "CHOICE" ptr size is_trace record
     elseif key in keys(state.internal_map)
         throw("Not implemented")
     else
-        throw("Key not in leaf or internal maps")
+        @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.internal_map _module=""
+        throw("$(key) Key not in leaf or internal maps")
     end
 
 
@@ -116,14 +120,15 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
 
     # check for constraints at this key
 
-    if key in keys(state.leaf_map)
-        ptr, size ,is_trace = state.leaf_map[key]
+    if key in keys(state.ptr_trie.leaf_nodes)
+        ptr, size ,is_trace = state.ptr_trie.leaf_nodes[key]
         state.io.ptr = ptr
         @debug "SUBTRACE" ptr size is_trace
     elseif key in keys(state.internal_map)
         throw("Not implemented")
     else
-        throw("Key not in leaf or internal maps")
+        @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.internal_map _module=""
+        throw("$(key) Key not in leaf or internal maps")
     end
 
     # get subtrace

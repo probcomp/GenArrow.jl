@@ -1,6 +1,4 @@
 import .Serialization
-using Gen
-using Logging
 
 
 # HEADER
@@ -65,9 +63,16 @@ function serialize_records(io, trie::Trie{K,V}, map::Dict{Any, Int64}) where {K,
     end
 
     for (addr, subtrie) in trie.internal_nodes
-        @debug "INTERNAL" addr
+        hmac = rand(-10000:-1)
+        @debug "INTERNAL" addr hmac
+        ptr = io.ptr
         Serialization.serialize(io, addr)
         serialize_trie(io, subtrie)
+        io.ptr = map[addr]
+        write(io, ptr)
+        write(io, io.size - ptr)
+        seekend(io)
+        @debug "INTERNAL" addr record_ptr=ptr length=(io.size-ptr) hmac=hmac _module=""
     end
 end
 
