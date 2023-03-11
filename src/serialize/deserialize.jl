@@ -1,58 +1,60 @@
 import .Serialization
 
+RECORD_TYPE = NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IOBuffer # Change to blob
     # leaf_map::Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}
     # internal_map::Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}
-    ptr_trie::Ptrie{Any} # Need this to support internal nodes
+    ptr_trie::Gen.Trie{Any, RECORD_TYPE}
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
+function to_pair(prefix, addr)
+    
+end
 
-# assumes io is at position of the start of internal map
-function _deserialize_internal_addresses(io, ptr_trie::Ptrie{Any}) 
+function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
+    # leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
+    # internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
+
+    current_trie = io.ptr
+    leaf_map_ptr = read(io, Int)
+    internal_map_ptr = read(io, Int)
+    @debug "[LEAF MAP] [INTERNAL MAP PTR]" current_trie leaf_map_ptr internal_map_ptr
+    leaf_count = read(io, Int)
+    @debug "LEAF COUNT" leaf_count
+    for i=1:leaf_count
+        addr = foldr(=> , (prefix..., Serialization.deserialize(io)))
+        println(addr)
+        # to_pair(addr )
+        record_ptr = read(io, Int)
+        record_size = read(io, Int)
+        is_trace = read(io, Bool)
+
+        ptr_trie[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
+        @debug "LEAF" addr record_ptr size=record_size is_trace
+    end
+
     internal_count = read(io, Int)
+    @debug "INTERNAL COUNT" internal_count
     for i=1:internal_count
-        addr = Serialization.deserialize(io)
+        flattened_addr = (prefix..., Serialization.deserialize(io))
+        addr = foldr(=> , flattened_addr)
         trie_ptr = read(io, Int)
         trie_size = read(io,Int)
         @debug "INTERNAL" addr trie_ptr trie_size  
 
-        set_internal_node!(ptr_trie, addr, trie_ptr, trie_size)
+        internal_node = Gen.Trie{Any, RECORD_TYPE}()
+        Gen.set_internal_node!(ptr_trie, addr, internal_node)
 
         restore_ptr = io.ptr
         io.ptr = trie_ptr # Next trie
-        next_leaf_map_ptr = read(io, Int)
-        next_addr_map_ptr = read(io, Int)
-        io.ptr = next_addr_map_ptr
-        @debug "JUMP" trie_ptr next_leaf_map_ptr next_addr_map_ptr
-        _deserialize_internal_addresses(io, ptr_trie)
+        _deserialize_maps(io, ptr_trie, flattened_addr)
         io.ptr = restore_ptr
     end
-end
 
-function _deserialize_maps(io)
-    # leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
-    # internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
-    ptr_trie = Ptrie{Any}(-1, -1)
-
-    leaf_map_ptr = read(io, Int)
-    internal_map_ptr = read(io, Int)
-    @debug "[LEAF MAP] [INTERNAL MAP PTR]" leaf_map_ptr internal_map_ptr
-    leaf_count = read(io, Int)
-    for i=1:leaf_count
-        addr = Serialization.deserialize(io)
-        record_ptr = read(io, Int)
-        record_size = read(io, Int)
-        is_trace = read(io, Bool)
-        # leaf_map[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
-        set_leaf_node!(ptr_trie, addr, (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace))
-        @debug "LEAF" addr record_ptr size=record_size is_trace
-    end
-
-    _deserialize_internal_addresses(io, ptr_trie)
-    @debug "MAP" ptr_trie.leaf_nodes ptr_trie.internal_nodes ptr_trie _module=""
+    @debug "MAP" ptr_trie _module=""
 
     ptr_trie
 end
@@ -66,7 +68,8 @@ function GFDeserializeState(gen_fn, io, params)
     retval = Serialization.deserialize(io)
 
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval gen_fn _module=""
-    ptr_trie = _deserialize_maps(io)
+    ptr_trie = Gen.Trie{Any, RECORD_TYPE}()
+    _deserialize_maps(io, ptr_trie, ())
     if isempty
         throw("Need to figure this out")
     else
@@ -92,13 +95,11 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
 
     # check if leaf_map or internal_map contains key
 
-    if key in state.ptr_trie.leaf_nodes
-        ptr, size ,is_trace = state.ptr_trie.leaf_nodes[key]
+    if haskey(state.ptr_trie, key)
+        ptr, size ,is_trace = state.ptr_trie[key]
         state.io.ptr = ptr
         record = Serialization.deserialize(state.io)
         @debug "CHOICE" ptr size is_trace record
-    elseif key in state.ptr_trie
-        throw("Not implemented")
     else
         @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.ptr_trie.internal_nodes _module=""
         throw("$(key) Key not in leaf or internal maps")
@@ -113,7 +114,7 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
 
     # intercept logpdf
     score = record.score
-    @debug "TRACEAT DIST" dist args key score retval
+    @debug "TRACEAT DIST" key record score retval args dist
 
     # add to the trace
     Gen.add_choice!(state.trace, key, retval, score)
@@ -136,13 +137,10 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
     Gen.visit!(state.visitor, key)
 
     # check for constraints at this key
-
-    if key in state.ptr_trie.leaf_nodes
-        ptr, size ,is_trace = state.ptr_trie.leaf_nodes[key]
+    if haskey(state.ptr_trie, key)
+        ptr, size ,is_trace = state.ptr_trie[key]
         state.io.ptr = ptr
         @debug "SUBTRACE" ptr size is_trace
-    elseif key in state.ptr_trie
-        throw("Not implemented")
     else
         @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.internal_map _module=""
         throw("$(key) Key not in leaf or internal maps")
