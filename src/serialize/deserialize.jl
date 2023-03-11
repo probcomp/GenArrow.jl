@@ -100,7 +100,7 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
         record = Serialization.deserialize(state.io)
         @debug "CHOICE" ptr size is_trace record
     else
-        @warn "LOST KEY" key state.ptr_trie.leaf_nodes state.ptr_trie.internal_nodes _module=""
+        @warn "LOST KEY" key state.ptr_trie _module=""
         throw("$(key) Key not in leaf or internal maps")
     end
 
