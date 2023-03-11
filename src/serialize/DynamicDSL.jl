@@ -12,7 +12,6 @@ function serialize_address_map(io, trie::Trie{K,V}) where {K,V}
     leaf_map_ptr = io.ptr
     write(io, length(trie.leaf_nodes))
     for (addr, record) in trie.leaf_nodes
-        # println(addr, " ", record)
         is_trace = isa(record.subtrace_or_retval, Trace)
         Serialization.serialize(io, addr)
         map[addr] = io.ptr
@@ -24,7 +23,6 @@ function serialize_address_map(io, trie::Trie{K,V}) where {K,V}
     internal_map_ptr = io.ptr
     write(io, length(trie.internal_nodes))
     for (addr, subtrie) in trie.internal_nodes
-        # println("Addr: ", addr)
         Serialization.serialize(io, addr)
 
         # TODO: Add assertion here. If DynamicDSL invariant holds, then maybe not necessary?
@@ -39,7 +37,6 @@ end
 function serialize_records(io, trie::Trie{K,V}, map::Dict{Any, Int64}) where {K,V}
     # Choices/Traces
     for (addr, record) in trie.leaf_nodes
-        # println(addr, " ", record)
         is_trace = isa(record.subtrace_or_retval, Trace)
         ptr = io.ptr
         hmac = rand(1:100000)

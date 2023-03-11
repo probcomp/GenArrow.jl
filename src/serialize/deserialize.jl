@@ -3,7 +3,7 @@ import .Serialization
 RECORD_TYPE = NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
-    io::IOBuffer # Change to blob
+    io::IO # Change to blob
     # leaf_map::Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}
     # internal_map::Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}
     ptr_trie::Gen.Trie{Any, RECORD_TYPE}
@@ -26,7 +26,6 @@ function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
     @debug "LEAF COUNT" leaf_count
     for i=1:leaf_count
         addr = foldr(=> , (prefix..., Serialization.deserialize(io)))
-        println(addr)
         # to_pair(addr )
         record_ptr = read(io, Int)
         record_size = read(io, Int)
@@ -171,7 +170,7 @@ function Gen.splice(state::GFDeserializeState, gen_fn::Gen.DynamicDSLFunction,
     retval
 end
 
-function _deserialize(gen_fn::Gen.DynamicDSLFunction, io::IOBuffer)
+function _deserialize(gen_fn::Gen.DynamicDSLFunction, io::IO)
     state = GFDeserializeState(gen_fn, io, gen_fn.params)
     # Deserialize stuff including args and retval
     retval = Gen.exec(gen_fn, state, state.trace.args)
