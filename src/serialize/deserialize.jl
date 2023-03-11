@@ -10,9 +10,6 @@ mutable struct GFDeserializeState
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
-function to_pair(prefix, addr)
-    
-end
 
 function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
     # leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
