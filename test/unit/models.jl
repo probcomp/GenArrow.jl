@@ -36,3 +36,20 @@ end
     a ~ submodel(n)
     n
 end
+
+@gen function multi_submodel(f)
+    total= 0
+    for i in 1:length(f)
+        val = @trace(bernoulli(f[i]), :k=>i)
+        total += val
+    end
+    return total
+end
+
+@gen function untraced_mixed(x::Int64)
+    a ~ bernoulli(0.2)
+    n = rand(1:10)
+    f = rand(Float64, n)
+    q ~ multi_submodel(f)
+    # return -q+x
+end

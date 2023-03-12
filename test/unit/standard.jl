@@ -97,3 +97,12 @@ function test_subtrace_with_untraced_arg()
     basic_equality(tr, tr_deserialized)
 end
 
+function test_untraced_mixed()
+    io = IOBuffer()
+    tr, weight = generate(untraced_mixed, (10,)) 
+    io = GenArrow.serialize(tr)
+    seekstart(io)
+    tr_deserialized = GenArrow._deserialize(untraced_mixed, io)
+    basic_equality(tr, tr_deserialized)
+end
+
