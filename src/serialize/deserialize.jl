@@ -4,16 +4,12 @@ RECORD_TYPE = NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, In
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IO # Change to blob
-    # leaf_map::Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}
-    # internal_map::Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}
     ptr_trie::Gen.Trie{Any, RECORD_TYPE}
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
 
 function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
-    # leaf_map = Dict{Any, NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}}()
-    # internal_map = Dict{Any,NamedTuple{(:ptr, :size), Tuple{Int64, Int64}}}()
 
     current_trie = io.ptr
     leaf_map_ptr = read(io, Int)
@@ -23,7 +19,6 @@ function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
     @debug "LEAF COUNT" leaf_count
     for i=1:leaf_count
         addr = foldr(=> , (prefix..., Serialization.deserialize(io)))
-        # to_pair(addr )
         record_ptr = read(io, Int)
         record_size = read(io, Int)
         is_trace = read(io, Bool)
@@ -102,7 +97,9 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
     end
 
 
+    # println("Fake args? ", args)
     retval = record.subtrace_or_retval
+    # println("Deserialized record: ", record)
     # Check if it is truly a retval
 
     # constrained = has_value(state.constraints, key)
@@ -119,6 +116,7 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
     # if constrained
         # state.weight += score
     # end
+    # println("recovered retval: $(retval)")
 
     retval
 end
@@ -144,6 +142,7 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
 
     # get subtrace
     subtrace = _deserialize(gen_fn, state.io)
+    # println("Deserialized retval ", get_retval(subtrace))
 
     # add to the trace
     Gen.add_call!(state.trace, key, subtrace)
@@ -153,6 +152,7 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
 
     # get return value
     retval = get_retval(subtrace) 
+    # println("return val subtrace: ", retval)
 
     retval
 end
@@ -170,8 +170,8 @@ end
 function _deserialize(gen_fn::Gen.DynamicDSLFunction, io::IO)
     state = GFDeserializeState(gen_fn, io, gen_fn.params)
     # Deserialize stuff including args and retval
-    retval = Gen.exec(gen_fn, state, state.trace.args)
-    Gen.set_retval!(state.trace, retval)
+    _ = Gen.exec(gen_fn, state, state.trace.args)
+    Gen.set_retval!(state.trace, get_retval(state.trace))
     @debug "END" tr=get_choices(state.trace)
     state.trace
 end
