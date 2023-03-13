@@ -46,8 +46,11 @@ function serialize_records(io, trie::Trie{K,V}, map::Dict{Any, Int64}) where {K,
             tr = record.subtrace_or_retval
             serialize(io, tr)
         else
-            # TODO: De-swizzle record
-            Serialization.serialize(io, record)
+            # Deswizzle record
+            write(io, record.score)
+            write(io, record.noise)
+            write(io, record.is_choice)
+            Serialization.serialize(io, record.subtrace_or_retval)
         end
 
         # TODO: Check if nothing was serialized?
@@ -204,7 +207,12 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
     if haskey(state.ptr_trie, key)
         ptr, size ,is_trace = state.ptr_trie[key]
         state.io.ptr = ptr
-        record = Serialization.deserialize(state.io)
+        # record = Serialization.deserialize(state.io)
+        score = read(state.io, Float64)
+        noise = read(state.io, Float64)
+        is_choice = read(state.io, Bool)
+        subtrace_or_retval = Serialization.deserialize(state.io)
+        record = Gen.ChoiceOrCallRecord(subtrace_or_retval, score, noise, is_choice)
         @debug "CHOICE" ptr size is_trace record
     else
         @warn "LOST KEY" key state.ptr_trie _module=""
@@ -212,9 +220,7 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
     end
 
 
-    # println("Fake args? ", args)
     retval = record.subtrace_or_retval
-    # println("Deserialized record: ", record)
     # Check if it is truly a retval
 
     # constrained = has_value(state.constraints, key)
@@ -231,7 +237,6 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
     # if constrained
         # state.weight += score
     # end
-    # println("recovered retval: $(retval)")
 
     retval
 end
@@ -257,7 +262,6 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
 
     # get subtrace
     subtrace = _deserialize(gen_fn, state.io)
-    # println("Deserialized retval ", get_retval(subtrace))
 
     # add to the trace
     Gen.add_call!(state.trace, key, subtrace)
@@ -267,7 +271,6 @@ function Gen.traceat(state::GFDeserializeState, gen_fn::Gen.GenerativeFunction{T
 
     # get return value
     retval = get_retval(subtrace) 
-    # println("return val subtrace: ", retval)
 
     retval
 end

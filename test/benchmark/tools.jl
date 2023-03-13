@@ -7,6 +7,7 @@ function setup(tr)
   serialize(io, tr)
   io
 end
+
 function setup(gen_fn, io::IO)
   seekstart(io)
   _deserialize(gen_fn, io)

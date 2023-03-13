@@ -10,7 +10,10 @@ using Test
 include("models.jl")
 include("tools.jl")
 
-# bench, prof = serialize_benchmark(wide, (10,))
-bench, prof = deserialize_benchmark(wide, (1000,))
+bench, prof = serialize_benchmark(wide, (10000,))
+display(bench)
+view(prof)
+bench, prof = deserialize_benchmark(wide, (10000,))
+# bench, prof = deserialize_benchmark(heavy_choice, (1000,))
 display(bench)
 view(prof)

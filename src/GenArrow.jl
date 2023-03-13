@@ -15,5 +15,4 @@ include("Serialize.jl")
 include("./serialize/DynamicDSL.jl")
 include("./serialize/Map.jl")
 include("./serialize/trie.jl")
-include("./serialize/deserialize.jl")
 end
