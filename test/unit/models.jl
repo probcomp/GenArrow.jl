@@ -51,5 +51,5 @@ end
     n = rand(1:10)
     f = rand(Float64, n)
     q ~ multi_submodel(f)
-    # return -q+x
+    return -q+x
 end

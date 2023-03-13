@@ -1,4 +1,5 @@
 using FunctionalCollections
+import .Serialization
 
 function serialize(tr::Gen.VectorTrace{Gen.UnfoldType, U, V}) where {U,V}
     io = IOBuffer()
@@ -14,15 +15,7 @@ function serialize(tr::Gen.VectorTrace{Gen.UnfoldType, U, V}) where {U,V}
     write(io, tr.num_nonempty)
     write(io, tr.score)
     write(io, tr.noise)
-    # println("SERIALIZE VECTOR TRACE")
-    # println("args: ", tr.args)
-    # println("retval: ", tr.retval)
-    # println("subtraces len: ", length(tr.subtraces))
-    # println("len: ", tr.len)
-    # println("num_nonempty: ", tr.num_nonempty)
-    # println("score: ", tr.score)
-    # println("noise: ", tr.noise)
-    # println("END")
+    @debug "VECTOR" map_type args=tr.args retval=tr.retval len=tr.len score=tr.score noise=tr.noise
 
     for subtrace in tr.subtraces # TODO: Figure out if append type before helps
         GenArrow.serialize(io, subtrace)
