@@ -43,7 +43,7 @@ mutable struct MapDeserializeState{T,U}
     num_nonempty::Int
 end
 
-function process!(gen_fn::Map{T,U}, args::Tuple, io::IO, key::Int, type, state::MapDeserializeState{T,U}) where {T,U}
+function process!(gen_fn::Map{T,U}, args::Tuple, io::IO, key::Int, state::MapDeserializeState{T,U}) where {T,U}
     local subtrace::U
     local retval::T
 
@@ -81,7 +81,7 @@ function _deserialize(gen_fn::Gen.Map{T,U}, io::IO) where {T,U}
     @debug "Vector ELTYPE" subtrace_count trace_types _module=""
 
     for key=1:length(args[1])
-        process!(gen_fn, args, io, key, trace_types[key], state)
+        process!(gen_fn, args, io, key, state)
     end
 
     @debug "VECTOR END" state _module=""

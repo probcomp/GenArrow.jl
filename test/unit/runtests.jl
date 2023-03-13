@@ -6,7 +6,6 @@ using Test
 
 include("standard.jl")
 include("models.jl")
-# include("trie.jl")
 
 @test test_leaves()
 @test test_internal()
