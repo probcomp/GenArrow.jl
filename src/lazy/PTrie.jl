@@ -100,7 +100,7 @@ has_leaf_node(trie::PTrie, addr) = haskey(trie.leaf_nodes, addr)
 
 # get_address_schema(::Trie) = DynamicSchema()
 
-# Base.haskey(trie::PTrie, key) = has_leaf_node(trie, key)
+Base.haskey(trie::PTrie, key) = has_leaf_node(trie, key)
 
 Base.getindex(trie::PTrie, key) = get_leaf_node(trie, key)
 
@@ -117,7 +117,6 @@ function Base.show(io::IO, trie::PTrie{K, V}, shift::Vector{Int}) where {K, V}
         end
     end
     println(io, tab[1:end-1] * "Ptr: $(trie.ptr), Length: $(trie.length)")
-    # println("L: ", tab[1:end-1] * "[L]")
     println(io, tab[1:end-1] * "[L]")
     for (key, val) in trie.leaf_nodes
         println(io,  tab * "┣━━ $(key) ━ $(val)")
@@ -125,7 +124,6 @@ function Base.show(io::IO, trie::PTrie{K, V}, shift::Vector{Int}) where {K, V}
     println(io, tab[1:end-1] * "[I]")
 
     for (key, subtrie) in trie.internal_nodes
-        # println("i: ", shift, " ", key )
         key_prefix = "┣━━ $(key) ━┓"
         new_shift = vcat(shift, [length(key_prefix)])
         key_prefix = tab * key_prefix 
