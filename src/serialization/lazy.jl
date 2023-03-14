@@ -49,7 +49,7 @@ function _deserialize_maps(trace::LazyTrace, io::IO,prefix::Tuple)
         trie_size = read(io,Int)
         @debug "INTERNAL" addr trie_ptr trie_size  
 
-        set_internal_node!(trace.trie, addr, trie_ptr, trie_size)
+        Gen.set_internal_node!(trace.trie, addr)
 
         restore_ptr = io.ptr
         io.ptr = trie_ptr # Next trie
@@ -70,12 +70,12 @@ function LazyDeserializeState(io)
     retval = Serialization.deserialize(io)
 
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval _module=""
-    trace = LazyTrace(io, args) 
+    trace = LazyTrace(args) 
     trace.isempty = isempty
     trace.score = score # add_call! and add_choice! double count
     trace.noise = noise
     trace.retval = retval
-    trace.trie = PTrie{Any, LAZY_TYPE}(-1,-1)
+    trace.trie = Trie{Any, Gen.ChoiceOrCallRecord}()
     _deserialize_maps(trace, io, ())
     if isempty
         throw("Need to figure this out")

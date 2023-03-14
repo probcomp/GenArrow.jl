@@ -1,17 +1,15 @@
 mutable struct LazyTrace <: Trace
     # gen_fn::T
-    # trie::PTrie{Any,Gen.ChoiceOrCallRecord}
-    trie::PTrie{Any,LAZY_TYPE}
-    io::IO
+    trie::Trie{Any,Gen.ChoiceOrCallRecord}
     isempty::Bool
     score::Float64
     noise::Float64
     args::Tuple
     retval::Any
-    function LazyTrace(io::IO, args)
-        trie = PTrie{Any,LAZY_TYPE}(-1, -1)
+    function LazyTrace(args)
+        trie = Trie{Any,Gen.ChoiceOrCallRecord}()
         # retval is not known yet
-        new(trie, io, true, 0, 0, args)
+        new(trie, true, 0, 0, args)
     end
 end
 
@@ -80,7 +78,7 @@ function Gen.get_choices(trace::LazyTrace)
 end
 
 mutable struct LazyChoiceMap <: ChoiceMap
-    trie::PTrie{Any, LAZY_TYPE}
+    trie::Trie{Any, Gen.ChoiceOrCallRecord}
 end
 
 # get_address_schema(::Type{LazyTrace}) = LazyAddressSchema()
@@ -123,16 +121,16 @@ end
 
 function Gen.get_values_shallow(choices::LazyChoiceMap)
     ((key, choice.subtrace_or_retval)
-     for (key, choice) in get_leaf_nodes(choices.trie)
+     for (key, choice) in Gen.get_leaf_nodes(choices.trie)
      if choice.is_choice)
 end
 
 function Gen.get_submaps_shallow(choices::LazyChoiceMap)
     calls_iter = ((key, get_choices(call.subtrace_or_retval))
-        for (key, call) in get_leaf_nodes(choices.trie)
+        for (key, call) in Gen.get_leaf_nodes(choices.trie)
         if !call.is_choice)
     internal_nodes_iter = ((key, LazyChoiceMap(trie))
-        for (key, trie) in get_internal_nodes(choices.trie))
+        for (key, trie) in Gen.get_internal_nodes(choices.trie))
     Iterators.flatten((calls_iter, internal_nodes_iter))
 end
 
