@@ -29,7 +29,7 @@ function _deserialize_maps(trace::LazyTrace, io::IO,prefix::Tuple)
         else
             # Deserialize subtrace lazily
             io.ptr = record_ptr
-            subtrace = _deserialize(io, true)
+            subtrace = _deserialize_lazy(io)
             Gen.add_call!(trace, addr, subtrace)
             @debug "SUBTRACE LEAF" subtrace=subtrace
             # trace.trie[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
@@ -86,15 +86,12 @@ function LazyDeserializeState(io)
     LazyDeserializeState(trace, io, Gen.AddressVisitor())
 end
 
-function _deserialize(io::IO, lazy)
+function _deserialize_lazy(io::IO, ::Type{Gen.DynamicDSLTrace{T}}; gen_fn=nothing) where {T}
     state = LazyDeserializeState(io)
     Gen.set_retval!(state.trace, get_retval(state.trace))
-    @debug "END" tr=get_choices(state.trace)
+    @debug "END" tr=get_choices(state.trace) gen_fn
+    if gen_fn !== nothing
+        return convert_to_dynamic(gen_fn, state.trace)
+    end
     state.trace
-end
-
-function _deserialize(gen_fn, io::IO, lazy)
-    trace = _deserialize(io, lazy)
-    # convert top level to dynamic trace type
-    convert_to_dynamic(gen_fn, trace)
 end
