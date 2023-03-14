@@ -25,7 +25,6 @@ function _deserialize_maps(trace::LazyTrace, io::IO,prefix::Tuple)
             is_choice = read(io, Bool)
             retval = Serialization.deserialize(io)
             Gen.add_choice!(trace, addr, retval, score)
-            # ptr_trie[addr] = record
             @debug "NON-SUBTRACE LEAF" score noise is_choice
         else
             # Deserialize subtrace lazily
