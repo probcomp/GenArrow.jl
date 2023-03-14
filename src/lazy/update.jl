@@ -1,11 +1,11 @@
 mutable struct LazyUpdateState
     prev_trace::LazyTrace
-    trace::LazyTrace
+    trace::DynamicDSLTrace
     constraints::Any
     weight::Float64
     visitor::AddressVisitor
     params::Dict{Symbol,Any}
-    discard::LazyChoiceMap
+    discard::DynamicChoiceMap
 end
 
 function LazyUpdateState(gen_fn, args, prev_trace, constraints, params)
@@ -184,8 +184,7 @@ function add_unvisited_to_discard!(discard::LazyChoiceMap,
     end
 end
 
-function update(trace::LazyTrace, arg_values::Tuple, arg_diffs::Tuple,
-                constraints::ChoiceMap)
+function update(trace::LazyTrace, arg_values::Tuple, arg_diffs::Tuple, constraints::ChoiceMap)
     gen_fn = trace.gen_fn
     state = LazyUpdateState(gen_fn, arg_values, trace, constraints, gen_fn.params)
     retval = exec(gen_fn, state, arg_values)
@@ -198,4 +197,3 @@ function update(trace::LazyTrace, arg_values::Tuple, arg_diffs::Tuple,
     end
     (state.trace, state.weight, UnknownChange(), state.discard)
 end
-Footer

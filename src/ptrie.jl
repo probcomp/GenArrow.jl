@@ -146,7 +146,3 @@ function Base.show(io::IO, trie::PTrie{K, V}, shift::Vector{Int}) where {K, V}
 end
 
 export PTrie
-# export set_internal_node!
-# export delete_internal_node!
-# export set_leaf_node!
-# export delete_leaf_node!

@@ -57,7 +57,7 @@ function _deserialize_maps(trace::LazyTrace, io::IO,prefix::Tuple)
         io.ptr = restore_ptr
     end
 
-    @debug "MAP" ptr_trie _module=""
+    @debug "MAP" trace.trie _module=""
     trace
 end
 
@@ -90,6 +90,12 @@ end
 function _deserialize(io::IO, lazy)
     state = LazyDeserializeState(io)
     Gen.set_retval!(state.trace, get_retval(state.trace))
-    # @debug "END" tr=get_choices(state.trace)
+    @debug "END" tr=get_choices(state.trace)
     state.trace
+end
+
+function _deserialize(gen_fn, io::IO, lazy)
+    trace = _deserialize(io, lazy)
+    # convert top level to dynamic trace type
+    convert_to_dynamic(gen_fn, trace)
 end
