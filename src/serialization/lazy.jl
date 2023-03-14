@@ -1,12 +1,10 @@
 mutable struct LazyDeserializeState
     trace::LazyTrace
     io::IO # Change to blob
-    ptr_trie::PTrie{Any, LAZY_TYPE}
     visitor::Gen.AddressVisitor
-    params::Dict{Symbol,Any}
 end
 
-function _deserialize_maps(io, ptr_trie::PTrie{Any, LAZY_TYPE}, prefix::Tuple)
+function _deserialize_maps(trace::LazyTrace, io::IO,prefix::Tuple)
     current_trie = io.ptr
     leaf_map_ptr = read(io, Int)
     internal_map_ptr = read(io, Int)
@@ -19,21 +17,25 @@ function _deserialize_maps(io, ptr_trie::PTrie{Any, LAZY_TYPE}, prefix::Tuple)
         record_size = read(io, Int)
         is_trace = read(io, Bool)
 
+        restore_ptr = io.ptr
         if !is_trace
-            restore_ptr = io.ptr
             io.ptr = record_ptr
             score = read(io, Float64)
             noise = read(io, Float64)
             is_choice = read(io, Bool)
-            subtrace_or_retval = Serialization.deserialize(io)
-            record = Gen.ChoiceOrCallRecord(subtrace_or_retval, score, noise, is_choice)
-            ptr_trie[addr] = record
+            retval = Serialization.deserialize(io)
+            Gen.add_choice!(trace, addr, retval, score)
+            # ptr_trie[addr] = record
             @debug "NON-SUBTRACE LEAF" score noise is_choice
-            io.ptr = restore_ptr
         else
-            ptr_trie[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
-            @debug "SUBTRACE LEAF" subtrace_record=ptr_trie[addr]
+            # Deserialize subtrace lazily
+            io.ptr = record_ptr
+            subtrace = _deserialize(io, true)
+            Gen.add_call!(trace, addr, subtrace)
+            @debug "SUBTRACE LEAF" subtrace=subtrace
+            # trace.trie[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
         end
+        io.ptr = restore_ptr
 
         @debug "LEAF" addr record_ptr size=record_size is_trace
     end
@@ -47,20 +49,19 @@ function _deserialize_maps(io, ptr_trie::PTrie{Any, LAZY_TYPE}, prefix::Tuple)
         trie_size = read(io,Int)
         @debug "INTERNAL" addr trie_ptr trie_size  
 
-        set_internal_node!(ptr_trie, addr, trie_ptr, trie_size)
+        set_internal_node!(trace.trie, addr, trie_ptr, trie_size)
 
         restore_ptr = io.ptr
         io.ptr = trie_ptr # Next trie
-        _deserialize_maps(io, ptr_trie, flattened_addr)
+        _deserialize_maps(trace, io,flattened_addr)
         io.ptr = restore_ptr
     end
 
     @debug "MAP" ptr_trie _module=""
-
-    ptr_trie
+    trace
 end
 
-function LazyDeserializeState(gen_fn, io, params)
+function LazyDeserializeState(io)
     trace_type = Serialization.deserialize(io)
     isempty = read(io, Bool)
     score = read(io, Float64)
@@ -68,9 +69,14 @@ function LazyDeserializeState(gen_fn, io, params)
     args = Serialization.deserialize(io)
     retval = Serialization.deserialize(io)
 
-    @debug "DESERIALIZE" type=trace_type isempty score noise args retval gen_fn _module=""
-    ptr_trie = PTrie{Any, LAZY_TYPE}(-1,-1)
-    _deserialize_maps(io, ptr_trie, ())
+    @debug "DESERIALIZE" type=trace_type isempty score noise args retval _module=""
+    trace = LazyTrace(io, args) 
+    trace.isempty = isempty
+    trace.score = score # add_call! and add_choice! double count
+    trace.noise = noise
+    trace.retval = retval
+    trace.trie = PTrie{Any, LAZY_TYPE}(-1,-1)
+    _deserialize_maps(trace, io, ())
     if isempty
         throw("Need to figure this out")
     else
@@ -78,17 +84,11 @@ function LazyDeserializeState(gen_fn, io, params)
     end
     # display(ptr_trie)
 
-    trace = LazyTrace(io, args) 
-    trace.isempty = isempty
-    trace.score = score # add_call! and add_choice! double count
-    trace.noise = noise
-    trace.retval = retval
-    trace.trie = ptr_trie
-    LazyDeserializeState(trace, io, ptr_trie, Gen.AddressVisitor(), params)
+    LazyDeserializeState(trace, io, Gen.AddressVisitor())
 end
 
-function _deserialize(gen_fn::Gen.DynamicDSLFunction, io::IO, lazy)
-    state = LazyDeserializeState(gen_fn, io, gen_fn.params)
+function _deserialize(io::IO, lazy)
+    state = LazyDeserializeState(io)
     Gen.set_retval!(state.trace, get_retval(state.trace))
     # @debug "END" tr=get_choices(state.trace)
     state.trace
