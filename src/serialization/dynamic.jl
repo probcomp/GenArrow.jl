@@ -115,7 +115,6 @@ end
 # DESERIALIZATION
 ##################
 
-RECORD_TYPE = NamedTuple{(:record_ptr, :record_size, :is_trace), Tuple{Int64, Int64, Int64}}
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IO # Change to blob
