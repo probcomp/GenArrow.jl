@@ -1,11 +1,16 @@
 mutable struct LazyTrace{T} <: Trace
-    # gen_fn
-    trie::PTrie
+    # gen_fn::T
+    trie::PTrie{Any,Gen.ChoiceOrCallRecord}
     isempty::Bool
     score::Float64
     noise::Float64
     args::Tuple
     retval::Any
+    function LazyTrace{T}(args) where {T}
+        trie = PTrie{Any,Gen.ChoiceOrCallRecord}(-1, -1)
+        # retval is not known yet
+        new{T}(trie, true, 0, 0, args)
+    end
 end
 
 set_retval!(trace::LazyTrace, retval) = (trace.retval = retval)
@@ -24,7 +29,7 @@ function get_choice(trace::LazyTrace, addr)
     if !choice.is_choice
         throw(KeyError(addr))
     end
-    ChoiceRecord(choice)
+    Gen.ChoiceRecord(choice)
 end
 
 function get_call(trace::LazyTrace, addr)
@@ -40,7 +45,7 @@ function add_choice!(trace::LazyTrace, addr, retval, score)
         error("Value or subtrace already present at address $addr.
             The same address cannot be reused for multiple random choices.")
     end
-    trace.trie[addr] = ChoiceOrCallRecord(retval, score, NaN, true)
+    trace.trie[addr] = Gen.ChoiceOrCallRecord(retval, score, NaN, true)
     trace.score += score
     trace.isempty = false
 end
@@ -54,7 +59,7 @@ function add_call!(trace::LazyTrace, addr, subtrace)
     noise = project(subtrace, EmptySelection())
     submap = get_choices(subtrace)
     trace.isempty = trace.isempty && isempty(submap)
-    trace.trie[addr] = ChoiceOrCallRecord(subtrace, score, noise, false)
+    trace.trie[addr] = Gen.ChoiceOrCallRecord(subtrace, score, noise, false)
     trace.score += score
     trace.noise += noise
 end
@@ -78,7 +83,7 @@ function get_choices(trace::LazyTrace)
 end
 
 mutable struct LazyChoiceMap <: ChoiceMap
-    trie::PTrie{Any, Gen.ChoiceOrCall}
+    trie::PTrie{Any, Gen.ChoiceOrCallRecord}
 end
 
 # get_address_schema(::Type{LazyTrace}) = LazyAddressSchema()
@@ -129,7 +134,7 @@ function get_submaps_shallow(choices::LazyTrace)
     calls_iter = ((key, get_choices(call.subtrace_or_retval))
         for (key, call) in get_leaf_nodes(choices.trie)
         if !call.is_choice)
-    internal_nodes_iter = ((key, DynamicDSLChoiceMap(trie))
+    internal_nodes_iter = ((key, LazyChoiceMap(trie))
         for (key, trie) in get_internal_nodes(choices.trie))
     Iterators.flatten((calls_iter, internal_nodes_iter))
 end
@@ -168,6 +173,6 @@ function _getindex(trace::LazyTrace, trie::Trie, addr)
     end
 end
 
-function Base.getindex(trace::DynamicDSLTrace, addr)
+function Base.getindex(trace::LazyTrace, addr)
     _getindex(trace, trace.trie, addr)
 end

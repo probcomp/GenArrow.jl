@@ -22,6 +22,19 @@ Base.isempty(trie::PTrie) = (trie.length == -1 && trie.ptr == -1) && isempty(tri
 get_leaf_nodes(trie::PTrie) = trie.leaf_nodes
 get_internal_nodes(trie::PTrie) = trie.internal_nodes
 
+function get_leaf_node(trie::PTrie, addr)
+    trie.leaf_nodes[addr]
+end
+
+function get_leaf_node(trie::PTrie, addr::Pair)
+    (first, rest) = addr
+    if haskey(trie.internal_nodes, first)
+        get_leaf_node(trie.internal_nodes[first], rest)
+    else
+        throw(KeyError(trie, addr))
+    end
+end
+
 function set_leaf_node!(trie::PTrie, addr, value)
     if haskey(trie.internal_nodes, addr)
         throw("Addr $(addr) in internal node")
@@ -99,6 +112,7 @@ end
 has_leaf_node(trie::PTrie, addr) = haskey(trie.leaf_nodes, addr)
 
 # get_address_schema(::Trie) = DynamicSchema()
+Base.setindex!(trie::PTrie, value, addr) = set_leaf_node!(trie, addr, value)
 
 Base.haskey(trie::PTrie, key) = has_leaf_node(trie, key)
 
