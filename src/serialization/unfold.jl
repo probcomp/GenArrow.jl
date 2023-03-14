@@ -1,5 +1,4 @@
 using FunctionalCollections
-import .Serialization
 
 function serialize(tr::Gen.VectorTrace{Gen.UnfoldType, U, V}) where {U,V}
     io = IOBuffer()

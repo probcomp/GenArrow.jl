@@ -2,3 +2,6 @@ Manifest.toml
 *.arrow
 sample
 test/arrow/
+test/unit/data.trace
+test/unit/read.txt
+test/unit/write.txt

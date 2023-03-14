@@ -1,17 +1,9 @@
 module GenArrow
-using Arrow
-using ArrowTypes
 using Gen
-using Tables
-using DataFrames
-using FilePathsBase
-using Serialization
+import Serialization
 using Logging
 
-include("GenTable.jl")
-include("AddressTrie.jl")
-include("ContextManager.jl")
-include("Serialize.jl")
-include("./serialize/DynamicDSL.jl")
-include("./serialize/Map.jl")
+include("ptrie.jl")
+include("lazy/lazy.jl")
+include("serialization/serialization.jl")
 end

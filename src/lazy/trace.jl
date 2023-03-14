@@ -13,18 +13,13 @@ mutable struct LazyTrace{T} <: Trace
     end
 end
 
-set_retval!(trace::LazyTrace, retval) = (trace.retval = retval)
+Gen.set_retval!(trace::LazyTrace, retval) = (trace.retval = retval)
 
-function has_choice(trace::LazyTrace, addr)
-    haskey(trace.trie, addr) && trace.trie[addr].is_choice
-end
+Gen.has_choice(trace::LazyTrace, addr)= haskey(trace.trie, addr) && trace.trie[addr].is_choice
 
-function has_call(trace::LazyTrace, addr)
-    haskey(trace.trie, addr) && !trace.trie[addr].is_choice
-end
+Gen.has_call(trace::LazyTrace, addr) = haskey(trace.trie, addr) && !trace.trie[addr].is_choice
 
-
-function get_choice(trace::LazyTrace, addr)
+function Gen.get_choice(trace::LazyTrace, addr)
     choice = trace.trie[addr]
     if !choice.is_choice
         throw(KeyError(addr))
@@ -32,7 +27,7 @@ function get_choice(trace::LazyTrace, addr)
     Gen.ChoiceRecord(choice)
 end
 
-function get_call(trace::LazyTrace, addr)
+function Gen.get_call(trace::LazyTrace, addr)
     call = trace.trie[addr]
     if call.is_choice
         throw(KeyError(addr))
@@ -40,7 +35,7 @@ function get_call(trace::LazyTrace, addr)
     CallRecord(call)
 end
 
-function add_choice!(trace::LazyTrace, addr, retval, score)
+function Gen.add_choice!(trace::LazyTrace, addr, retval, score)
     if haskey(trace.trie, addr)
         error("Value or subtrace already present at address $addr.
             The same address cannot be reused for multiple random choices.")
@@ -50,7 +45,7 @@ function add_choice!(trace::LazyTrace, addr, retval, score)
     trace.isempty = false
 end
 
-function add_call!(trace::LazyTrace, addr, subtrace)
+function Gen.add_call!(trace::LazyTrace, addr, subtrace)
     if haskey(trace.trie, addr)
         error("Value or subtrace already present at address $addr.
             The same address cannot be reused for multiple random choices.")
@@ -69,12 +64,13 @@ end
 # Traces GFI #
 ##############
 
-get_args(trace::LazyTrace) = trace.args
-get_retval(trace::LazyTrace) = trace.retval
-get_score(trace::LazyTrace) = trace.score
+Gen.get_args(trace::LazyTrace) = trace.args
+Gen.get_retval(trace::LazyTrace) = trace.retval
+Gen.get_score(trace::LazyTrace) = trace.score
 # get_gen_fn(trace::LazyTrace) = trace.gen_fn
 
-function get_choices(trace::LazyTrace)
+function Gen.get_choices(trace::LazyTrace)
+    println("In get_choices")
     if !trace.isempty
         LazyChoiceMap(trace.trie)
     else
@@ -88,11 +84,11 @@ end
 
 # get_address_schema(::Type{LazyTrace}) = LazyAddressSchema()
 Base.isempty(::LazyChoiceMap) = nothing 
-has_value(choices::LazyChoiceMap, addr::Pair) = _has_value(choices, addr)
-get_value(choices::LazyChoiceMap, addr::Pair) = _get_value(choices, addr)
-get_submap(choices::LazyChoiceMap, addr::Pair) = _get_submap(choices, addr)
+Gen.has_value(choices::LazyChoiceMap, addr::Pair) = _has_value(choices, addr)
+Gen.get_value(choices::LazyChoiceMap, addr::Pair) = _get_value(choices, addr)
+Gen.get_submap(choices::LazyChoiceMap, addr::Pair) = _get_submap(choices, addr)
 
-function get_submap(choices::LazyTrace, addr)
+function Gen.get_submap(choices::LazyChoiceMap, addr)
     trie = choices.trie
     if has_leaf_node(trie, addr)
         # leaf node, must be a call
@@ -110,12 +106,12 @@ function get_submap(choices::LazyTrace, addr)
     end
 end
 
-function has_value(choices::LazyTrace, addr)
+function Gen.has_value(choices::LazyChoiceMap, addr)
     trie = choices.trie
     has_leaf_node(trie, addr) && trie[addr].is_choice
 end
 
-function get_value(choices::LazyTrace, addr)
+function Gen.get_value(choices::LazyChoiceMap, addr)
     trie = choices.trie
     choice = trie[addr]
     if !choice.is_choice
@@ -124,13 +120,13 @@ function get_value(choices::LazyTrace, addr)
     choice.subtrace_or_retval
 end
 
-function get_values_shallow(choices::LazyTrace)
+function Gen.get_values_shallow(choices::LazyChoiceMap)
     ((key, choice.subtrace_or_retval)
      for (key, choice) in get_leaf_nodes(choices.trie)
      if choice.is_choice)
 end
 
-function get_submaps_shallow(choices::LazyTrace)
+function Gen.get_submaps_shallow(choices::LazyChoiceMap)
     calls_iter = ((key, get_choices(call.subtrace_or_retval))
         for (key, call) in get_leaf_nodes(choices.trie)
         if !call.is_choice)
@@ -141,7 +137,7 @@ end
 
 ## Base.getindex ##
 
-function _getindex(trace::LazyTrace, trie::Trie, addr::Pair)
+function Gen._getindex(trace::LazyTrace, trie::Trie, addr::Pair)
     (first, rest) = addr
     if haskey(trie.leaf_nodes, first)
         choice_or_call = trie.leaf_nodes[first]
@@ -158,7 +154,7 @@ function _getindex(trace::LazyTrace, trie::Trie, addr::Pair)
     end
 end
 
-function _getindex(trace::LazyTrace, trie::Trie, addr)
+function Gen._getindex(trace::LazyTrace, trie::Trie, addr)
     if haskey(trie.leaf_nodes, addr)
         choice_or_call = trie.leaf_nodes[addr]
         if choice_or_call.is_choice
