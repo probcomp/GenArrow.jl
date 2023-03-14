@@ -1,14 +1,12 @@
-
 mutable struct LazyDeserializeState
     trace::LazyTrace
     io::IO # Change to blob
-    ptr_trie::PTrie{Any, RECORD_TYPE}
+    ptr_trie::PTrie{Any, LAZY_TYPE}
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
 
-function _deserialize_maps(io, ptr_trie::PTrie{Any, RECORD_TYPE}, prefix::Tuple)
-
+function _deserialize_maps(io, ptr_trie::PTrie{Any, LAZY_TYPE}, prefix::Tuple)
     current_trie = io.ptr
     leaf_map_ptr = read(io, Int)
     internal_map_ptr = read(io, Int)
@@ -21,7 +19,22 @@ function _deserialize_maps(io, ptr_trie::PTrie{Any, RECORD_TYPE}, prefix::Tuple)
         record_size = read(io, Int)
         is_trace = read(io, Bool)
 
-        ptr_trie[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
+        if !is_trace
+            restore_ptr = io.ptr
+            io.ptr = record_ptr
+            score = read(io, Float64)
+            noise = read(io, Float64)
+            is_choice = read(io, Bool)
+            subtrace_or_retval = Serialization.deserialize(io)
+            record = Gen.ChoiceOrCallRecord(subtrace_or_retval, score, noise, is_choice)
+            ptr_trie[addr] = record
+            @debug "NON-SUBTRACE LEAF" score noise is_choice
+            io.ptr = restore_ptr
+        else
+            ptr_trie[addr] = (record_ptr=record_ptr, record_size=record_size, is_trace=is_trace)
+            @debug "SUBTRACE LEAF" subtrace_record=ptr_trie[addr]
+        end
+
         @debug "LEAF" addr record_ptr size=record_size is_trace
     end
 
@@ -34,7 +47,7 @@ function _deserialize_maps(io, ptr_trie::PTrie{Any, RECORD_TYPE}, prefix::Tuple)
         trie_size = read(io,Int)
         @debug "INTERNAL" addr trie_ptr trie_size  
 
-        set_internal_node!(ptr_trie, addr, internal_node, trie_ptr, trie_size)
+        set_internal_node!(ptr_trie, addr, trie_ptr, trie_size)
 
         restore_ptr = io.ptr
         io.ptr = trie_ptr # Next trie
@@ -56,7 +69,7 @@ function LazyDeserializeState(gen_fn, io, params)
     retval = Serialization.deserialize(io)
 
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval gen_fn _module=""
-    ptr_trie = PTrie{Any, RECORD_TYPE}(-1,-1)
+    ptr_trie = PTrie{Any, LAZY_TYPE}(-1,-1)
     _deserialize_maps(io, ptr_trie, ())
     if isempty
         throw("Need to figure this out")

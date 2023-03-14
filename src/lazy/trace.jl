@@ -1,7 +1,7 @@
 mutable struct LazyTrace <: Trace
     # gen_fn::T
     # trie::PTrie{Any,Gen.ChoiceOrCallRecord}
-    trie::PTrie{Any,RECORD_TYPE}
+    trie::PTrie{Any,LAZY_TYPE}
     io::IO
     isempty::Bool
     score::Float64
@@ -9,7 +9,7 @@ mutable struct LazyTrace <: Trace
     args::Tuple
     retval::Any
     function LazyTrace(io::IO, args)
-        trie = PTrie{Any,RECORD_TYPE}(-1, -1)
+        trie = PTrie{Any,LAZY_TYPE}(-1, -1)
         # retval is not known yet
         new(trie, io, true, 0, 0, args)
     end
@@ -80,7 +80,7 @@ function Gen.get_choices(trace::LazyTrace)
 end
 
 mutable struct LazyChoiceMap <: ChoiceMap
-    trie::PTrie{Any, RECORD_TYPE}
+    trie::PTrie{Any, LAZY_TYPE}
 end
 
 # get_address_schema(::Type{LazyTrace}) = LazyAddressSchema()

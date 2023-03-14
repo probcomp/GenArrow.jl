@@ -118,12 +118,12 @@ end
 mutable struct GFDeserializeState
     trace::Gen.DynamicDSLTrace
     io::IO # Change to blob
-    ptr_trie::Gen.Trie{Any, RECORD_TYPE}
+    ptr_trie::Gen.Trie{Any, RECORD_INFO}
     visitor::Gen.AddressVisitor
     params::Dict{Symbol,Any}
 end
 
-function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
+function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_INFO}, prefix::Tuple)
 
     current_trie = io.ptr
     leaf_map_ptr = read(io, Int)
@@ -150,7 +150,7 @@ function _deserialize_maps(io, ptr_trie::Trie{Any, RECORD_TYPE}, prefix::Tuple)
         trie_size = read(io,Int)
         @debug "INTERNAL" addr trie_ptr trie_size  
 
-        internal_node = Gen.Trie{Any, RECORD_TYPE}()
+        internal_node = Gen.Trie{Any, RECORD_INFO}()
         Gen.set_internal_node!(ptr_trie, addr, internal_node)
 
         restore_ptr = io.ptr
@@ -173,7 +173,7 @@ function GFDeserializeState(gen_fn, io, params)
     retval = Serialization.deserialize(io)
 
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval gen_fn _module=""
-    ptr_trie = Gen.Trie{Any, RECORD_TYPE}()
+    ptr_trie = Gen.Trie{Any, RECORD_INFO}()
     _deserialize_maps(io, ptr_trie, ())
     if isempty
         throw("Need to figure this out")
@@ -203,7 +203,6 @@ function Gen.traceat(state::GFDeserializeState, dist::Gen.Distribution{T}, args,
     if haskey(state.ptr_trie, key)
         ptr, size ,is_trace = state.ptr_trie[key]
         state.io.ptr = ptr
-        # record = Serialization.deserialize(state.io)
         score = read(state.io, Float64)
         noise = read(state.io, Float64)
         is_choice = read(state.io, Bool)
