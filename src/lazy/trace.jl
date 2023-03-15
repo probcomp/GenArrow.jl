@@ -71,70 +71,11 @@ Gen.get_score(trace::LazyTrace) = trace.score
 
 function Gen.get_choices(trace::LazyTrace)
     if !trace.isempty
-        LazyChoiceMap(trace.trie)
+        Gen.DynamicDSLChoiceMap(trace.trie)
     else
         EmptyChoiceMap()
     end
 end
-
-mutable struct LazyChoiceMap <: ChoiceMap
-    trie::Trie{Any, Gen.ChoiceOrCallRecord}
-end
-
-# get_address_schema(::Type{LazyTrace}) = LazyAddressSchema()
-Base.isempty(::LazyChoiceMap) = nothing 
-Gen.has_value(choices::LazyChoiceMap, addr::Pair) = _has_value(choices, addr)
-Gen.get_value(choices::LazyChoiceMap, addr::Pair) = _get_value(choices, addr)
-Gen.get_submap(choices::LazyChoiceMap, addr::Pair) = _get_submap(choices, addr)
-
-function Gen.get_submap(choices::LazyChoiceMap, addr)
-    trie = choices.trie
-    if has_leaf_node(trie, addr)
-        # leaf node, must be a call
-        call = trie[addr]
-        if call.is_choice
-            throw(KeyError(addr))
-        end
-        get_choices(call.subtrace_or_retval)
-    elseif has_internal_node(trie, addr)
-        # internal node
-        subtrie = get_internal_node(trie, addr)
-        LazyChoiceMap(subtrie) # see below
-    else
-        EmptyChoiceMap()
-    end
-end
-
-function Gen.has_value(choices::LazyChoiceMap, addr)
-    trie = choices.trie
-    has_leaf_node(trie, addr) && trie[addr].is_choice
-end
-
-function Gen.get_value(choices::LazyChoiceMap, addr)
-    trie = choices.trie
-    choice = trie[addr]
-    if !choice.is_choice
-        throw(KeyError(addr))
-    end
-    choice.subtrace_or_retval
-end
-
-function Gen.get_values_shallow(choices::LazyChoiceMap)
-    ((key, choice.subtrace_or_retval)
-     for (key, choice) in Gen.get_leaf_nodes(choices.trie)
-     if choice.is_choice)
-end
-
-function Gen.get_submaps_shallow(choices::LazyChoiceMap)
-    calls_iter = ((key, get_choices(call.subtrace_or_retval))
-        for (key, call) in Gen.get_leaf_nodes(choices.trie)
-        if !call.is_choice)
-    internal_nodes_iter = ((key, LazyChoiceMap(trie))
-        for (key, trie) in Gen.get_internal_nodes(choices.trie))
-    Iterators.flatten((calls_iter, internal_nodes_iter))
-end
-
-## Base.getindex ##
 
 function Gen._getindex(trace::LazyTrace, trie::Trie, addr::Pair)
     (first, rest) = addr

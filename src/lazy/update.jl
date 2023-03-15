@@ -18,7 +18,7 @@ end
 
 function traceat(state::LazyUpdateState, dist::Distribution{T},
                  args::Tuple, key) where {T}
-
+    println("UPDATE DIST")
     local prev_retval::T
     local retval::T
 
@@ -74,6 +74,7 @@ function traceat(state::LazyUpdateState, gen_fn::GenerativeFunction{T,U},
     local subtrace::U
     local retval::T
 
+    println("UPDATE GENFUNC")
     # check key was not already visited, and mark it as visited
     visit!(state.visitor, key)
 
@@ -186,14 +187,18 @@ end
 
 function update(trace::LazyTrace, arg_values::Tuple, arg_diffs::Tuple, constraints::ChoiceMap)
     gen_fn = trace.gen_fn
+    if gen_fn === nothing
+        throw("Generative function not attched to trace")
+    end
     state = LazyUpdateState(gen_fn, arg_values, trace, constraints, gen_fn.params)
+    println("Gen_fn = ", gen_fn, " state: ", state)
     retval = exec(gen_fn, state, arg_values)
     set_retval!(state.trace, retval)
-    visited = get_visited(state.visitor)
-    state.weight -= update_delete_recurse(trace.trie, visited)
-    add_unvisited_to_discard!(state.discard, visited, get_choices(trace))
-    if !all_visited(visited, constraints)
-        error("Did not visit all constraints")
-    end
-    (state.trace, state.weight, UnknownChange(), state.discard)
+    # visited = get_visited(state.visitor)
+    # state.weight -= update_delete_recurse(trace.trie, visited)
+    # add_unvisited_to_discard!(state.discard, visited, get_choices(trace))
+    # if !all_visited(visited, constraints)
+    #     error("Did not visit all constraints")
+    # end
+    # (state.trace, state.weight, UnknownChange(), state.discard)
 end
