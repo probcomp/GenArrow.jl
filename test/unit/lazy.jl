@@ -1,3 +1,4 @@
+# Observational Equality
 function test_lazy_basic()
     io = IOBuffer()
     tr, weight = generate(basic, (4,)) 
@@ -61,3 +62,5 @@ function test_lazy_untraced_mixed()
     observational_equality(tr, tr_deserialized)
 end
 
+
+# Update

@@ -19,7 +19,6 @@ function Gen.set_internal_node!(trie::Trie{K,V}, addr) where {K,V}
     trie.internal_nodes[addr] = Trie{K,V}()
 end
 
-# include("ptrie.jl")
 include("lazy/lazy.jl")
 include("serialization/serialization.jl")
 end

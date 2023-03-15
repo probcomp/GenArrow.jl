@@ -11,3 +11,10 @@ end
     a ~ mvnormal(zeros(n), I(n))
 end
 
+@gen function stalling(n)
+    for i=1:n
+        {:a=>i} ~ mvnormal(zeros(3), I(3))
+    end
+    return 1
+end
+

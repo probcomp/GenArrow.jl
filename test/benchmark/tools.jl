@@ -8,9 +8,14 @@ function setup(tr)
   io
 end
 
-function setup(gen_fn, io::IO)
+function _deserialize_setup(gen_fn, io::IO)
   seekstart(io)
   _deserialize(gen_fn, io)
+end
+
+function _lazy_deserialize_setup(io::IO)
+  seekstart(io)
+  _deserialize_lazy(io)
 end
 
 function serialize_benchmark(gen_fn, args)
@@ -24,7 +29,16 @@ function deserialize_benchmark(gen_fn, args)
     io = IOBuffer()
     tr, _ = generate(gen_fn, args)
     serialize(io, tr)
-    bench = @bprofile setup($(gen_fn), $(io))
+    bench = @bprofile _deserialize_setup($(gen_fn), $(io))
     prof = Profile.fetch()
     bench, prof
+end
+
+function lazy_deserialize_benchmark(gen_fn, args)
+  io = IOBuffer()
+  tr, _ = generate(gen_fn, args)
+  serialize(io, tr)
+  bench = @bprofile _lazy_deserialize_setup($(io))
+  prof = Profile.fetch()
+  bench, prof
 end
