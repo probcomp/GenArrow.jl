@@ -71,11 +71,11 @@ function LazyDeserializeState(io)
     @debug "DESERIALIZE" type=trace_type isempty score noise args retval _module=""
     trace = LazyTrace(args) 
     trace.isempty = isempty
+    trace.trie = Trie{Any, Gen.ChoiceOrCallRecord}()
+    _deserialize_maps(trace, io, ())
     trace.score = score # add_call! and add_choice! double count
     trace.noise = noise
     trace.retval = retval
-    trace.trie = Trie{Any, Gen.ChoiceOrCallRecord}()
-    _deserialize_maps(trace, io, ())
     if isempty
         throw("Need to figure this out")
     else

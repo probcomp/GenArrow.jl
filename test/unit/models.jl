@@ -1,3 +1,10 @@
+@gen function basic(n::Int64)
+    for i=1:n
+        {(:k,i)}  ~ bernoulli(0.3)
+    end
+    return -1
+end
+
 @gen function leaves(n)
     x ~ bernoulli(0.5)
     y ~ submodel(n)
